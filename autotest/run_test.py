@@ -1,13 +1,10 @@
-import os
 import pickle
 import queue
-import random
 import sys
 import threading
 from time import sleep, time
-from tqdm.autonotebook import tqdm
 
-from setup_test import get_remote_cluster_ips, get_local_cluster_ips
+from orchestration import *
 from utils import *
 
 
@@ -28,13 +25,11 @@ class TestRequests:
         else:
             raise RuntimeError('Unsupported cluster arg type')
         self.ips = (get_remote_cluster_ips if self.remote else get_local_cluster_ips)(cluster_arg)
+        if not self.ips:
+            raise RuntimeError('Error retrieving IPs for cluster, does cluster exist?')
         self.log_handler = (RemoteLogsHandler if self.remote else LocalLogsHandler)(self.ips)
         self.nodes = {i: LogosRpc(ip) for i, ip in self.ips.items()}
         self.num_nodes = len(self.nodes)
-
-        # This checks if a new cluster is ready. Remove if testing on old clusters
-        if not self.is_cluster_initialized():
-            raise RuntimeError('Nodes not yet initialized!')
 
         with open(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                                'data/accounts48000.pickle'), 'rb') as handle:
@@ -45,9 +40,9 @@ class TestRequests:
     Test cases
     """
 
-    def test_account_creation(self):
+    def test_account_creation(self, num_worker_threads=32):
         pwr = 5
-        self.create_accounts_parallel(pwr, num_worker_threads=32)
+        self.create_accounts_parallel(pwr, num_worker_threads=num_worker_threads)
         err_dict = self.verify_account_creation(pwr)
         if len(err_dict):
             print(err_dict)
@@ -66,7 +61,12 @@ class TestRequests:
                 print('Node {} count: {}'.format(i, counts[i]))
             return all(i == self.num_nodes - 1 for i in counts)
         else:
-            return self.log_handler.grep_count(pattern, 0)[0] == self.num_nodes - 1
+            post_commit_count = self.log_handler.grep_count(pattern, 0)[0]
+            if post_commit_count == self.num_nodes - 1:
+                return True
+            else:
+                print('Received {} out of {} Post_Commit messages'.format(post_commit_count, self.num_nodes - 1))
+                return False
 
     def create_accounts_parallel(self, powr=6, num_worker_threads=8):
         r1_size = 30
