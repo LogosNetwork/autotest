@@ -72,12 +72,15 @@ def execute_command_on_cluster(cluster_name, commands, client=None, wait=True):
     print('Command id: \n\t{}'.format(command_id))
     if not wait:
         return resp
+    # poll command execution status
     else:
         # get cluster size first
         cfn_client = boto3.client('cloudformation', region_name=REGION)
         resp = cfn_client.describe_stacks(StackName=cluster_name)
         cluster_size = next(int(p['ParameterValue']) for p in resp['Stacks'][0]['Parameters']
                             if p['ParameterKey'] == 'AsgMaxSize')
+
+        counter = 1
         while True:
             # get status from all instances
             while True:
@@ -88,13 +91,14 @@ def execute_command_on_cluster(cluster_name, commands, client=None, wait=True):
                 if status_list:
                     break
                 sleep(2)
-
+            # paginate to get remaining list of status, if any
             while 'NextToken' in resp:
                 resp = client.list_command_invocations(
                     CommandId=command_id,
                     NextToken=resp['NextToken']
                 )
                 status_list.extend([(i['Status'], i['InstanceId']) for i in resp['CommandInvocations']])
+
             # count and report
             err_values = ['Cancelled', 'Failed', 'TimedOut', 'Cancelling']
             n_success = 0
@@ -111,8 +115,8 @@ def execute_command_on_cluster(cluster_name, commands, client=None, wait=True):
                 raise RuntimeError('Failed to execute command on remote cluster, original command: \n\t{}'
                                    .format(commands))
 
-            print('{} out of {} expected Successes'.format(n_success, cluster_size))
-
+            print('{} out of {} expected Successes{}'.format(n_success, cluster_size, '.' * counter), end='\r')
+            counter = counter % 3 + 1
             if n_success == cluster_size:
                 print('All succeeded')
                 return
@@ -121,9 +125,7 @@ def execute_command_on_cluster(cluster_name, commands, client=None, wait=True):
 
 
 def restart_logos(cluster_name, clear_db=True, client=None):
-    files_to_rm = '{}/log/*'.format(DATA_PATH)
-    if clear_db:
-        files_to_rm += ' {ldb} {ldb}-lock'.format(ldb='{}/data.ldb'.format(DATA_PATH))
+    files_to_rm = get_files_to_remove(clear_db)
     commands = [
         'systemctl stop logos_core',
         'rm -f {}'.format(files_to_rm),
@@ -133,9 +135,7 @@ def restart_logos(cluster_name, clear_db=True, client=None):
 
 
 def update_logos(cluster_name, logos_id, clear_db=True, client=None):
-    files_to_rm = '{}/log/*'.format(DATA_PATH)
-    if clear_db:
-        files_to_rm += ' {ldb} {ldb}-lock'.format(ldb='{}/data.ldb'.format(DATA_PATH))
+    files_to_rm = get_files_to_remove(clear_db)
     commands = [
         'systemctl stop logos_core',
         'aws s3 cp s3://logos-bench-{}/binaries/{}/logos_core {}/logos_core'.format(REGION, logos_id, BENCH_DIR),
@@ -144,3 +144,35 @@ def update_logos(cluster_name, logos_id, clear_db=True, client=None):
         'sleep 20 && systemctl start logos_core'
     ]
     return execute_command_on_cluster(cluster_name, commands, client)
+
+
+def update_config(cluster_name, config_id, new_generator=False, clear_db=True, callback=False, client=None):
+    files_to_rm = get_files_to_remove(clear_db)
+    commands = [
+        'systemctl stop logos_core',
+        'aws s3 cp s3://logos-bench-{}/helpers/gen_config.py {}/gen_config.py'.format(REGION, BENCH_DIR)
+        if new_generator else '',
+        'aws s3 cp s3://logos-bench-{region}/configs/{conf_id}/bench.json.tmpl {bench_dir}/config/bench.json.tmpl && '
+        'python {bench_dir}/gen_config.py{callback} && cp {bench_dir}/config/bench.json {data_path}/config.json'.format(
+            region=REGION,
+            conf_id=config_id,
+            bench_dir=BENCH_DIR,
+            callback=' --callback' if callback else '',
+            data_path=DATA_PATH
+        ),
+        'rm -f {}'.format(files_to_rm),
+        'sleep 20 && systemctl start logos_core'
+    ]
+    return execute_command_on_cluster(cluster_name, commands, client)
+
+
+def get_files_to_remove(clear_db=True):
+    """
+    Get string of all files to remove before restarting logos_core
+    :param clear_db: boolean flag indicating whether to wipe the database
+    :return: Return a space separated string of all files to remove
+    """
+    files_to_rm = '{}/log/*'.format(DATA_PATH)
+    if clear_db:
+        files_to_rm += ' {ldb} {ldb}-lock'.format(ldb='{}/data.ldb'.format(DATA_PATH))
+    return files_to_rm

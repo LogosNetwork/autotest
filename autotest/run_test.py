@@ -13,10 +13,11 @@ class TestRequests:
     Cluster-agnostic test class
     """
 
-    def __init__(self, cluster_arg):
+    def __init__(self, cluster_arg, num_delegates=32):
         """
 
         :param cluster_arg: Either AWS Cloudformation cluster name, or integer indicating size of local cluster
+        :param num_delegates: ACTUAL size of the consensus group (can be smaller than num_nodes)
         """
         if isinstance(cluster_arg, str):
             self.remote = True
@@ -30,18 +31,25 @@ class TestRequests:
         self.log_handler = (RemoteLogsHandler if self.remote else LocalLogsHandler)(self.ips)
         self.nodes = {i: LogosRpc(ip) for i, ip in self.ips.items()}
         self.num_nodes = len(self.nodes)
+        self.num_delegates = num_delegates
 
         with open(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                                'data/accounts48000.pickle'), 'rb') as handle:
             self.accounts = pickle.load(handle)
             self.account_list = list(self.accounts.values())
 
+    def run(self):
+        for member in dir(self):
+            method = getattr(self, member)
+            if member.startswith('test_') and hasattr(method, '__call__'):
+                print(member.replace('_', ' '))
+                method()
+
     """
     Test cases
     """
 
-    def test_account_creation(self, num_worker_threads=32):
-        pwr = 5
+    def test_account_creation(self, num_worker_threads=32, pwr=5):
         self.create_accounts_parallel(pwr, num_worker_threads=num_worker_threads)
         err_dict = self.verify_account_creation(pwr)
         if len(err_dict):
@@ -59,13 +67,13 @@ class TestRequests:
             counts = self.log_handler.grep_count(pattern)
             for i in range(self.num_nodes):
                 print('Node {} count: {}'.format(i, counts[i]))
-            return all(i == self.num_nodes - 1 for i in counts)
+            return all(i == self.num_delegates - 1 for i in counts)
         else:
             post_commit_count = self.log_handler.grep_count(pattern, 0)[0]
-            if post_commit_count == self.num_nodes - 1:
+            if post_commit_count == self.num_delegates - 1:
                 return True
             else:
-                print('Received {} out of {} Post_Commit messages'.format(post_commit_count, self.num_nodes - 1))
+                print('Received {} out of {} Post_Commit messages'.format(post_commit_count, self.num_delegates - 1))
                 return False
 
     def create_accounts_parallel(self, powr=6, num_worker_threads=8):
@@ -106,7 +114,7 @@ class TestRequests:
         return err_dict
 
     def send_and_confirm(self, sender_size, send_amt, num_worker_threads):
-        d_ids = [random.randrange(0, self.num_nodes) for _ in range(sender_size)]
+        d_ids = [random.randrange(0, self.num_delegates) for _ in range(sender_size)]
         accounts_to_create = self.account_list[sender_size:sender_size * 2]
         d_ids, block_data_list = zip(*[self.create_next_txn(
             self.accounts[j]['account'],
@@ -187,7 +195,8 @@ class TestRequests:
                 yield iterable[idx:min(idx + n, length)]
 
         def check_hash_persistence(hashes_to_check):
-            for i in range(self.num_nodes):
+            # for i in range(self.num_nodes):
+            for i in range(self.num_delegates):
                 try:
                     self.nodes[i].blocks(hashes_to_check)
                 except LogosRPCError:
@@ -205,6 +214,8 @@ class TestRequests:
             if retries > max_retries and time() - t0 > 300:
                 print(self.nodes[0].blocks(txn_hashes))
                 return False
+
+# TODO: regenerate delegate dict whenever epoch transition takes place
 
 
 if __name__ == '__main__':

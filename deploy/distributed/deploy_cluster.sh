@@ -300,7 +300,7 @@ while true; do
         peer_ips=$(sed 's/ /,/g' <<< ${peer_ips})
         echo ${peer_ips}
         # start node software
-        ${BUILD_DIR}/start_logos_core.sh ${CLUSTER_NAME}
+#        ${BUILD_DIR}/start_logos_core.sh ${CLUSTER_NAME}
         # If in VNC viewer mode, launch new windows and ssh in
         if [[  -n "${DISPLAY}" && -n "${SSH}" ]]; then
             if ! [[ -x "$(command -v wmctrl)" ]]; then

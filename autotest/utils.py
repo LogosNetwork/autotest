@@ -60,11 +60,11 @@ class LogosRpc:
         return self.call('account_info', account=account)
 
     def account_history(self, account=g_account, raw=True, count=100, head=''):
-        msg = {'account': account, 'action': 'account_history', 'raw': 'true' if raw else 'false', 'count': count}
+        msg = {'account': account, 'raw': 'true' if raw else 'false', 'count': count}
         if head:
             assert self.is_valid_hash(head)
             msg['head'] = head
-        return self.call(msg)
+        return self.call('account_history', **msg)
 
     def key_create(self):
         return self.call('key_create')
