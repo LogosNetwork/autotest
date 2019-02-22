@@ -43,7 +43,11 @@ class TestRequests:
             method = getattr(self, member)
             if member.startswith('test_') and hasattr(method, '__call__'):
                 print(member.replace('_', ' '))
-                method()
+                res = method()
+                if not res:
+                    print('Test failed! ')
+                    break
+                print("Test succeeded.")
 
     """
     Test cases
@@ -56,6 +60,46 @@ class TestRequests:
             print(err_dict)
             return False
         return True
+
+    def test_epoch_transition(self):
+        timeout = 300
+        # first tell delegates to start_epoch_transition, no delay
+        for node in self.nodes.values():
+            resp = node.call('start_epoch_transition')
+            if 'result' not in resp or resp['result'] != 'in-progress':
+                print(node.ip, resp, file=sys.stderr)
+
+        # count occurrences of CONNECT|ETS|ES|ETE
+        count_tmpl = 'grep -r "{{pat}}" {dir}* | wc -l'.format(dir=RemoteLogsHandler.LOG_DIR)
+        command = '\n'.join(count_tmpl.format(pat=pat) for pat in [
+            'ConsensusContainer::EpochTransitionEventsStart',
+            'ConsensusContainer::EpochTransitionStart',
+            'ConsensusContainer::EpochStart',
+            'ConsensusContainer::EpochTransitionEnd',
+        ])
+        t0 = time()
+        while True:
+            count_strings = self.log_handler.collect_lines(command)
+            counts = [[int(s) for s in line.rstrip('\n').split('\n')] for line in count_strings]
+            counts = [sum(zipped) for zipped in zip(*counts)]
+            print('Connect: {} | ETS: {} | ES: {} | ETE: {}'.format(*counts), end='\r')
+            if counts == [64, 40, 40, 40]:
+                print('\nCount matched')
+                return True
+            if time() - t0 > timeout:
+                return False
+            sleep(5)
+
+        # events.sh 1 | perl -e ...
+
+        # TODO: test delay scenario
+
+        # transition.sh with --delegate [new|persistent|retiring]
+        pass
+
+    def test_epoch_creation(self):
+        print('2')
+        pass
 
     """
     Helper functions

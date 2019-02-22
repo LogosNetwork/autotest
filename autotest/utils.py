@@ -184,7 +184,7 @@ class RemoteLogsHandler:
         lines = lines.decode("utf-8")
         return lines
 
-    def collect_lines(self, command, node_id):
+    def collect_lines(self, command, node_id=None):
         all_lines = []
         if node_id is None:
             for node_id in tqdm(range(self.num_nodes)):
@@ -212,7 +212,7 @@ class LocalLogsHandler:
     def get_command_output(self, command, node_id):
         pass
 
-    def collect_lines(self, command, node_id):
+    def collect_lines(self, command, node_id=None):
         pass
 
     def grep_lines(self, pattern, node_id=None):
