@@ -1,6 +1,6 @@
 import pickle
 import queue
-import sys
+import re
 import threading
 from time import sleep, time
 
@@ -75,6 +75,28 @@ class TestRequests:
             else:
                 print('Received {} out of {} Post_Commit messages'.format(post_commit_count, self.num_delegates - 1))
                 return False
+
+    def get_stored_request_count(self, node_id=None):
+        # TODO: change grep pattern once Devon code is merged, same as below
+        all_lines = self.log_handler.collect_lines(
+            'grep -r "Batch.*Stored" {}* | tail -n1'.format(self.log_handler.LOG_DIR),
+            node_id
+        )
+
+        def stored_count_from_line(line):
+            pat = 'ConsensusManager<BatchStateBlock> - Stored '
+            m = re.search('{}([0-9]+)'.format(pat), line)
+            return int(m.group(1)) if m is not None else 0
+
+        return sum(stored_count_from_line(line) for line in all_lines)
+
+    def get_stored_request_block_count(self, node_id=None):
+        all_lines = self.log_handler.collect_lines(
+            'grep -r "Batch.*Stored" {}* | wc -l'.format(self.log_handler.LOG_DIR),
+            node_id
+        )
+
+        return sum(int(line.rstrip('\n')) if line else 0 for line in all_lines)
 
     def create_accounts_parallel(self, powr=6, num_worker_threads=8):
         r1_size = 30

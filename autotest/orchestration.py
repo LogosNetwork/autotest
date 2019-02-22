@@ -118,7 +118,7 @@ def execute_command_on_cluster(cluster_name, commands, client=None, wait=True):
             print('{} out of {} expected Successes{}'.format(n_success, cluster_size, '.' * counter), end='\r')
             counter = counter % 3 + 1
             if n_success == cluster_size:
-                print('All succeeded')
+                print('\nAll succeeded')
                 return
 
             sleep(2)
