@@ -3,6 +3,7 @@ import queue
 import re
 import threading
 from time import sleep, time
+from tqdm.autonotebook import tqdm
 
 from orchestration import *
 from utils import *
@@ -42,12 +43,15 @@ class TestRequests:
         for member in dir(self):
             method = getattr(self, member)
             if member.startswith('test_') and hasattr(method, '__call__'):
+                print("=" * 60)
                 print(member.replace('_', ' '))
                 res = method()
                 if not res:
                     print('Test failed! ')
                     break
                 print("Test succeeded.")
+        print("=" * 60)
+        print("All tests succeeded!")
 
     """
     Test cases
@@ -62,7 +66,7 @@ class TestRequests:
         return True
 
     def test_epoch_transition(self):
-        timeout = 300
+        timeout = 600
         # first tell delegates to start_epoch_transition, no delay
         for node in self.nodes.values():
             resp = node.call('start_epoch_transition')
@@ -90,8 +94,6 @@ class TestRequests:
                 return False
             sleep(5)
 
-        # events.sh 1 | perl -e ...
-
         # TODO: test delay scenario
 
         # transition.sh with --delegate [new|persistent|retiring]
@@ -99,6 +101,7 @@ class TestRequests:
 
     def test_epoch_creation(self):
         print('2')
+        return True
         pass
 
     """
@@ -106,6 +109,9 @@ class TestRequests:
     """
 
     def is_cluster_initialized(self, from_all=False):
+        if not self.is_cluster_running(None if from_all else 0):
+            return False
+
         pattern = 'Received Post_Commit'
         if from_all:
             counts = self.log_handler.grep_count(pattern)
@@ -119,6 +125,21 @@ class TestRequests:
             else:
                 print('Received {} out of {} Post_Commit messages'.format(post_commit_count, self.num_delegates - 1))
                 return False
+
+    def is_cluster_running(self, node_id=None, verbose=True):
+        pids = self.log_handler.collect_lines('pgrep logos_core', node_id)
+        running = True
+        for i, pid in enumerate(pids):
+            if not pid:
+                if verbose:
+                    print('Node {} with ip {} is not running logos_core'.format(i, self.ips[i]))
+                running = True
+        err_lines = self.log_handler.grep_lines('(error|fatal)]', node_id)
+        for i, err_line in enumerate(err_lines):
+            if err_line:
+                print('Node {} with ip {} reported the following error: {}\n'.format(i, self.ips[i], err_line))
+                running = True
+        return running
 
     def get_stored_request_count(self, node_id=None):
         # TODO: change grep pattern once Devon code is merged, same as below
@@ -140,14 +161,15 @@ class TestRequests:
             node_id
         )
 
-        return sum(int(line.rstrip('\n')) if line else 0 for line in all_lines)
+        return sum(int(line) if line else 0 for line in all_lines)
 
     def create_accounts_parallel(self, powr=6, num_worker_threads=8):
         r1_size = 30
         d_id = 0
         base_balance = 1000  # in milli-lgs
         send_amt = int(base_balance * (3 ** 10))
-        for i in tqdm(range(r1_size)):
+        print('Creating initial account group of {} accounts'.format(r1_size), end='')
+        for i in range(r1_size):
             account = self.accounts[i]
             d_id, block_data = self.create_next_genesis_txn(account['account'], d_id, 2000000000000)
             self.nodes[d_id].process(block_data['block'])
@@ -155,21 +177,22 @@ class TestRequests:
             if not self.wait_for_blocks_persistence([block_data['hash']]):
                 sys.stderr.write('Creation stopped at index {}, account {}'.format(i, account['account']))
                 break
+            print('.', end='')
+        print()
         del d_id
 
         sender_size = r1_size
 
         for i in range(powr):
             print('Starting round i = {}'.format(i + 1))
-            t0 = time()
             if not self.send_and_confirm(sender_size, send_amt, num_worker_threads):
                 print('Failed at iteration with exponent i={}'.format(i))
                 return
             send_amt = int(send_amt / 2)
             sender_size *= 2
-            print('Finished in {}s'.format(time() - t0))
 
     def verify_account_creation(self, powr=6):
+        print('Verifying all accounts just got created...')
         err_dict = {}
         for i in tqdm(range(30 * (2 ** powr))):
             account = self.accounts[i]['account']
@@ -194,7 +217,7 @@ class TestRequests:
 
         # construct queue
         q = queue.Queue()
-        for j in tqdm(range(sender_size)):
+        for j in range(sender_size):
             q.put((j, d_ids[j], block_data_list[j]))
 
         # process worker thread
@@ -225,10 +248,12 @@ class TestRequests:
         for t in threads:
             t.join()
 
-        print('Time to process: {}'.format(time() - t0))
+        t1 = time()
+        print('Time to process: {:.6f}s'.format(t1 - t0))
         blocks_to_check = [block_data['hash'] for block_data in block_data_list]
         if not self.wait_for_blocks_persistence(blocks_to_check):
             return False
+        print('Time to wait for persistence: {:.6f}s'.format(time() - t1))
         return True
 
     def create_next_txn(self, sender_addr, sender_pub, sender_prv, destination, designated_id=0, amount_mlgs=None):

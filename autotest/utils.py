@@ -2,7 +2,6 @@ import os
 import paramiko
 import random
 import requests
-from tqdm.autonotebook import tqdm
 
 g_account = 'lgs_3e3j5tkog48pnny9dmfzj1r16pg8t1e76dz5tmac6iq689wyjfpiij4txtdo'
 g_prv = '34F0A37AAD20F4A260F0A5B3CB3D7FB50673212263E58A380BC10474BB039CE4'
@@ -24,7 +23,7 @@ class LogosRPCError(Exception):
         self.rpc_error = rpc_error
 
     def __str__(self):
-        return 'Received error {} from uri {} while calling message\n\t{}'.format(
+        return 'Received error: {}\nfrom uri {} while calling message\n\t{}'.format(
             self.rpc_error, self.uri, self.message
         )
 
@@ -182,12 +181,13 @@ class RemoteLogsHandler:
         ssh_stdin, ssh_stdout, ssh_stderr = self.ssh.exec_command(command)
         lines = ssh_stdout.read()
         lines = lines.decode("utf-8")
-        return lines
+        self.ssh.close()
+        return lines.rstrip('\n')
 
     def collect_lines(self, command, node_id=None):
         all_lines = []
         if node_id is None:
-            for node_id in tqdm(range(self.num_nodes)):
+            for node_id in range(self.num_nodes):
                 all_lines.append(self.get_command_output(command, node_id))
         else:
             all_lines.append(self.get_command_output(command, node_id))
@@ -195,12 +195,12 @@ class RemoteLogsHandler:
 
     def grep_lines(self, pattern, node_id=None):
         # can use regex for pattern as well
-        command = 'grep -r "{}" {}*'.format(pattern, RemoteLogsHandler.LOG_DIR)
+        command = 'grep -Er "{}" {}*'.format(pattern, RemoteLogsHandler.LOG_DIR)
         return self.collect_lines(command, node_id)
 
     def grep_count(self, pattern, node_id=None):
         # can use regex for pattern as well
-        command = 'grep -r "{}" {}* | wc -l'.format(pattern, RemoteLogsHandler.LOG_DIR)
+        command = 'grep -Er "{}" {}* | wc -l'.format(pattern, RemoteLogsHandler.LOG_DIR)
         return [int(line.split()[0]) for line in self.collect_lines(command, node_id)]
 
 
