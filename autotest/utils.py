@@ -2,6 +2,8 @@ import os
 import paramiko
 import random
 import requests
+import sys
+from time import sleep, time
 
 g_account = 'lgs_3e3j5tkog48pnny9dmfzj1r16pg8t1e76dz5tmac6iq689wyjfpiij4txtdo'
 g_prv = '34F0A37AAD20F4A260F0A5B3CB3D7FB50673212263E58A380BC10474BB039CE4'
@@ -225,9 +227,3 @@ class LocalLogsHandler:
 """
 Various helper functions
 """
-
-
-def designated_delegate(pub, prev):
-    # prev is zero
-    indicator = pub if all(map(lambda x: not int(x, 16), prev)) else prev
-    return int(indicator[-2:], 16) % 32

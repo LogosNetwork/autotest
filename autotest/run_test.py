@@ -1,15 +1,12 @@
 import pickle
-import queue
 import re
-import threading
-from time import sleep, time
-from tqdm.autonotebook import tqdm
 
 from orchestration import *
+import test_cases
 from utils import *
 
 
-class TestRequests:
+class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__all__]):
     """
     Cluster-agnostic test class
     """
@@ -43,66 +40,22 @@ class TestRequests:
         for member in dir(self):
             method = getattr(self, member)
             if member.startswith('test_') and hasattr(method, '__call__'):
-                print("=" * 60)
-                print(member.replace('_', ' '))
+                TestRequests.print_test_name(member.replace('_', ' ').upper())
                 res = method()
                 if not res:
                     print('Test failed! ')
                     break
                 print("Test succeeded.")
-        print("=" * 60)
+        print("=" * 80)
         print("All tests succeeded!")
 
     """
     Test cases
     """
 
-    def test_account_creation(self, num_worker_threads=32, pwr=5):
-        self.create_accounts_parallel(pwr, num_worker_threads=num_worker_threads)
-        err_dict = self.verify_account_creation(pwr)
-        if len(err_dict):
-            print(err_dict)
-            return False
-        return True
-
-    def test_epoch_transition(self):
-        timeout = 600
-        # first tell delegates to start_epoch_transition, no delay
-        for node in self.nodes.values():
-            resp = node.call('start_epoch_transition')
-            if 'result' not in resp or resp['result'] != 'in-progress':
-                print(node.ip, resp, file=sys.stderr)
-
-        # count occurrences of CONNECT|ETS|ES|ETE
-        count_tmpl = 'grep -r "{{pat}}" {dir}* | wc -l'.format(dir=RemoteLogsHandler.LOG_DIR)
-        command = '\n'.join(count_tmpl.format(pat=pat) for pat in [
-            'ConsensusContainer::EpochTransitionEventsStart',
-            'ConsensusContainer::EpochTransitionStart',
-            'ConsensusContainer::EpochStart',
-            'ConsensusContainer::EpochTransitionEnd',
-        ])
-        t0 = time()
-        while True:
-            count_strings = self.log_handler.collect_lines(command)
-            counts = [[int(s) for s in line.rstrip('\n').split('\n')] for line in count_strings]
-            counts = [sum(zipped) for zipped in zip(*counts)]
-            print('Connect: {} | ETS: {} | ES: {} | ETE: {}'.format(*counts), end='\r')
-            if counts == [64, 40, 40, 40]:
-                print('\nCount matched')
-                return True
-            if time() - t0 > timeout:
-                return False
-            sleep(5)
-
-        # TODO: test delay scenario
-
-        # transition.sh with --delegate [new|persistent|retiring]
-        pass
-
     def test_epoch_creation(self):
         print('2')
         return True
-        pass
 
     """
     Helper functions
@@ -115,9 +68,8 @@ class TestRequests:
         pattern = 'Received Post_Commit'
         if from_all:
             counts = self.log_handler.grep_count(pattern)
-            for i in range(self.num_nodes):
-                print('Node {} count: {}'.format(i, counts[i]))
-            return all(i == self.num_delegates - 1 for i in counts)
+            print(counts[:self.num_delegates])
+            return all(i == self.num_delegates - 1 for i in counts[:self.num_delegates])
         else:
             post_commit_count = self.log_handler.grep_count(pattern, 0)[0]
             if post_commit_count == self.num_delegates - 1:
@@ -163,148 +115,13 @@ class TestRequests:
 
         return sum(int(line) if line else 0 for line in all_lines)
 
-    def create_accounts_parallel(self, powr=6, num_worker_threads=8):
-        r1_size = 30
-        d_id = 0
-        base_balance = 1000  # in milli-lgs
-        send_amt = int(base_balance * (3 ** 10))
-        print('Creating initial account group of {} accounts'.format(r1_size), end='')
-        for i in range(r1_size):
-            account = self.accounts[i]
-            d_id, block_data = self.create_next_genesis_txn(account['account'], d_id, 2000000000000)
-            self.nodes[d_id].process(block_data['block'])
-            d_id = designated_delegate(g_pub, block_data['hash'])
-            if not self.wait_for_blocks_persistence([block_data['hash']]):
-                sys.stderr.write('Creation stopped at index {}, account {}'.format(i, account['account']))
-                break
-            print('.', end='')
-        print()
-        del d_id
-
-        sender_size = r1_size
-
-        for i in range(powr):
-            print('Starting round i = {}'.format(i + 1))
-            if not self.send_and_confirm(sender_size, send_amt, num_worker_threads):
-                print('Failed at iteration with exponent i={}'.format(i))
-                return
-            send_amt = int(send_amt / 2)
-            sender_size *= 2
-
-    def verify_account_creation(self, powr=6):
-        print('Verifying all accounts just got created...')
-        err_dict = {}
-        for i in tqdm(range(30 * (2 ** powr))):
-            account = self.accounts[i]['account']
-            try:
-                self.nodes[0].account_info(account)
-            except LogosRPCError as e:
-                err_dict[i] = e.__dict__
-        return err_dict
-
-    def send_and_confirm(self, sender_size, send_amt, num_worker_threads):
-        d_ids = [random.randrange(0, self.num_delegates) for _ in range(sender_size)]
-        accounts_to_create = self.account_list[sender_size:sender_size * 2]
-        d_ids, block_data_list = zip(*[self.create_next_txn(
-            self.accounts[j]['account'],
-            self.accounts[j]['public'],
-            self.accounts[j]['private'],
-            accounts_to_create[j]['account'],
-            d_ids[j],
-            send_amt
-        ) for j in range(sender_size)])
-        resps = {}
-
-        # construct queue
-        q = queue.Queue()
-        for j in range(sender_size):
-            q.put((j, d_ids[j], block_data_list[j]))
-
-        # process worker thread
-        def worker():
-            while True:
-                try:
-                    j, d_id, block_data = q.get(block=False)
-                except queue.Empty:
-                    break
-                try:
-                    resps[j] = self.nodes[d_ids[j]].process(block_data_list[j]['block'])
-                except LogosRPCError:
-                    sys.stderr.write('Error at index {}!\n'.format(j))
-                    raise
-                q.task_done()
-
-        t0 = time()
-        # try to process every request
-        threads = []
-        for i in range(num_worker_threads):
-            t = threading.Thread(target=worker)
-            t.start()
-            threads.append(t)
-
-        # block until all tasks are done
-        q.join()
-        # stop workers
-        for t in threads:
-            t.join()
-
-        t1 = time()
-        print('Time to process: {:.6f}s'.format(t1 - t0))
-        blocks_to_check = [block_data['hash'] for block_data in block_data_list]
-        if not self.wait_for_blocks_persistence(blocks_to_check):
-            return False
-        print('Time to wait for persistence: {:.6f}s'.format(time() - t1))
-        return True
-
-    def create_next_txn(self, sender_addr, sender_pub, sender_prv, destination, designated_id=0, amount_mlgs=None):
-        info_data = self.nodes[designated_id].account_info(sender_addr)
-        prev = info_data['frontier']
-        designated_id = designated_delegate(sender_pub, prev)
-        if amount_mlgs is None:
-            amount_mlgs = designated_id + 1
-        assert isinstance(amount_mlgs, int)
-        amount = str(amount_mlgs) + '0' * MLGS_DEC
-        create_data = self.nodes[designated_id].block_create(
-            amount=amount,
-            destination=destination,
-            previous=prev,
-            key=sender_prv,
-            fee_mlgs=MIN_FEE_MLGS
-        )
-        return designated_id, create_data
-
-    def create_next_genesis_txn(self, destination, designated_id=0, amount_mlgs=None):
-        return self.create_next_txn(g_account, g_pub, g_prv, destination, designated_id, amount_mlgs)
-
-    # This assumes block persistence & account info update happen together
-    def wait_for_blocks_persistence(self, txn_hashes, max_batch=2000):
-        assert(all(LogosRpc.is_valid_hash(h) for h in txn_hashes))
-
-        def batch(iterable, n=1):
-            length = len(iterable)
-            for idx in range(0, length, n):
-                yield iterable[idx:min(idx + n, length)]
-
-        def check_hash_persistence(hashes_to_check):
-            # for i in range(self.num_nodes):
-            for i in range(self.num_delegates):
-                try:
-                    self.nodes[i].blocks(hashes_to_check)
-                except LogosRPCError:
-                    return False
-            return True
-
-        max_retries = 30
-        retries = 0
-        t0 = time()
-        while True:
-            if all(check_hash_persistence(txn_batch) for txn_batch in batch(txn_hashes, max_batch)):
-                return True
-            sleep(1)
-            retries += 1
-            if retries > max_retries and time() - t0 > 300:
-                print(self.nodes[0].blocks(txn_hashes))
-                return False
+    @staticmethod
+    def print_test_name(name):
+        length = len(name)
+        print('=' * 80)
+        print('|' * (length + 4))
+        print('||' + name + '||')
+        print('|' * (length + 4))
 
 # TODO: regenerate delegate dict whenever epoch transition takes place
 
