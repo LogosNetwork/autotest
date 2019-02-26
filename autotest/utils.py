@@ -96,6 +96,12 @@ class LogosRpc:
     def epoch_test(self):
         return self.call('generate_epoch')
 
+    def epoch_delegates_current(self):
+        return self.call('epoch_delegates', epoch='current')
+
+    def epoch_delegates_next(self):
+        return self.call('epoch_delegates', epoch='next')
+
     def block(self, block_hash):
         assert (self.is_valid_hash(block_hash))
         return self.call('block', hash=block_hash)
@@ -227,3 +233,9 @@ class LocalLogsHandler:
 """
 Various helper functions
 """
+
+
+def designated_delegate(pub, prev):
+    # prev is zero
+    indicator = pub if all(c == '0' for c in prev) else prev
+    return int(indicator[-2:], 16) % 32

@@ -5,6 +5,8 @@ from orchestration import *
 import test_cases
 from utils import *
 
+WIDTH = 80
+
 
 class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__all__]):
     """
@@ -34,6 +36,7 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         with open(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                                'data/accounts48000.pickle'), 'rb') as handle:
             self.accounts = pickle.load(handle)
+            self.account_frontiers = {v['account']: '0' * 32 for v in self.accounts.values() }  # easier lookup
             self.account_list = list(self.accounts.values())
 
     def run(self):
@@ -46,7 +49,7 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
                     print('Test failed! ')
                     break
                 print("Test succeeded.")
-        print("=" * 80)
+        print("=" * WIDTH)
         print("All tests succeeded!")
 
     """
@@ -115,13 +118,16 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
 
         return sum(int(line) if line else 0 for line in all_lines)
 
+    def designated_delegate_for_account(self, account_dict):  # note that this relies on a correct local frontiers
+        return designated_delegate(account_dict['public'], self.account_frontiers[account_dict['account']])
+
     @staticmethod
     def print_test_name(name):
         length = len(name)
-        print('=' * 80)
-        print('|' * (length + 4))
-        print('||' + name + '||')
-        print('|' * (length + 4))
+        print('=' * WIDTH)
+        print('|' * WIDTH)
+        print('|' * int((WIDTH - length) / 2) + name + '|' * int((WIDTH - length + 1) / 2))
+        print('|' * WIDTH)
 
 # TODO: regenerate delegate dict whenever epoch transition takes place
 

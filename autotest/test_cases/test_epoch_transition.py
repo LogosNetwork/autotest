@@ -4,6 +4,14 @@ from utils import *
 class TestCaseMixin:
 
     def test_epoch_transition(self):
+        if self.num_nodes != self.num_delegates * 2:  # cluster size doesn't support epoch transition test
+            print('Skipping test. Num nodes {} num delegates'.format(self.num_nodes, self.num_delegates))
+            return True
+
+        # get delegates for current and next epoch
+        cur_ds = self.nodes[0].epoch_delegates_current()
+        next_ds = self.nodes[0].epoch_delegates_next()
+
         timeout = 600
         # first tell delegates to start_epoch_transition, no delay
         for node in self.nodes.values():
@@ -27,7 +35,9 @@ class TestCaseMixin:
             counts = [sum(zipped) for zipped in zip(*counts)]
             print(' ' * 60, end='\r')
             print('|| Connect: {:2} | ETS: {:2} | ES: {:2} | ETE: {:2} || {}'.format(*counts, '.' * counter), end='\r')
-            if counts == [64, 40, 40, 40]:
+            # TODO: test sending txns to different delegate classes in separate threads
+            n_overlap = int(self.num_delegates * 5 / 4)
+            if counts == [self.num_nodes, n_overlap, n_overlap, n_overlap]:
                 print('\nCount matched')
                 return True
             if time() - t0 > timeout:
@@ -35,12 +45,4 @@ class TestCaseMixin:
             counter = counter % 3 + 1
             sleep(5)
 
-        # then test sending transactions to different delegate groups
-        # 1. retiring
-
-        # 2. persistent
-
-        # 3. new
-
         # TODO: test delay scenario
-        pass

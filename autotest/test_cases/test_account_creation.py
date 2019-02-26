@@ -49,10 +49,14 @@ class TestCaseMixin:
         for i in tqdm(range(30 * (2 ** powr))):
             account = self.accounts[i]['account']
             try:
-                self.nodes[0].account_info(account)
+                self.update_account_frontier(account_addr=account)
             except LogosRPCError as e:
                 err_dict[i] = e.__dict__
         return err_dict
+
+    def update_account_frontier(self, account_addr):
+        info = self.nodes[0].account_info(account_addr)
+        self.account_frontiers[account_addr] = info['frontier']
 
     def send_and_confirm(self, sender_size, send_amt, num_worker_threads):
         d_ids = [random.randrange(0, self.num_delegates) for _ in range(sender_size)]
@@ -157,10 +161,3 @@ class TestCaseMixin:
             if retries > max_retries and time() - t0 > 300:
                 print(self.nodes[0].blocks(txn_hashes))
                 return False
-
-
-def designated_delegate(pub, prev):
-    # prev is zero
-    indicator = pub if all(map(lambda x: not int(x, 16), prev)) else prev
-    return int(indicator[-2:], 16) % 32
-
