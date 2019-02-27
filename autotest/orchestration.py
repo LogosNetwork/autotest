@@ -242,3 +242,10 @@ def get_files_to_remove(clear_db=True):
     if clear_db:
         files_to_rm += ' {ldb} {ldb}-lock'.format(ldb='{}/data.ldb'.format(DATA_PATH))
     return files_to_rm
+
+def run_db_test(cluster_name, client=None):
+    commands = [
+        'cd {}/../db-tests'.format(BENCH_DIR),
+        'python run_test.py {}/LogosTest/data.ldb'.format(BENCH_DIR)
+    ]
+    return execute_command_on_cluster(cluster_name, commands, client)
