@@ -170,7 +170,7 @@ def update_logos(cluster_name, logos_id, clear_db=True, client=None):
         client: a boto3 ssm client
 
     Returns:
-
+        dict: the response from the send_command function
     """
     files_to_rm = get_files_to_remove(clear_db)
     commands = [
@@ -197,7 +197,7 @@ def update_config(cluster_name, config_id, new_generator=False, clear_db=True, c
         client: a boto3 ssm client
 
     Returns:
-
+        dict: the response from the send_command function
     """
     files_to_rm = get_files_to_remove(clear_db)
     if callback_args is not None:
