@@ -101,6 +101,7 @@ class TestCaseMixin:
             sleep(5)
 
         # Examine transactions and verify that epoch numbers are correct
+        return True
 
         # TODO: test delay scenario & test various invalid epoch number scenarios
 
