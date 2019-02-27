@@ -16,8 +16,9 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
     def __init__(self, cluster_arg, num_delegates=32):
         """
 
-        :param cluster_arg: Either AWS Cloudformation cluster name, or integer indicating size of local cluster
-        :param num_delegates: ACTUAL size of the consensus group (can be smaller than num_nodes)
+        Args:
+            cluster_arg: (int or :obj:`str`) Either AWS Cloudformation cluster name, or integer indicating size of local cluster
+            num_delegates: (int) ACTUAL size of the consensus group (can be smaller than num_nodes)
         """
         if isinstance(cluster_arg, str):
             self.remote = True

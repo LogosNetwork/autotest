@@ -11,8 +11,13 @@ DATA_PATH = '{}/LogosTest'.format(BENCH_DIR)
 def get_remote_cluster_ips(cluster_name='FebruaryTestNet'):
     """
     Creates a dictionary of remote cluster ips
-    :param cluster_name: AWS Cloudformation cluster name
-    :return: Dictionary of node_id-public_ip key-val pairs
+
+    Args:
+        cluster_name (:obj:`str`): AWS Cloudformation cluster name
+
+    Returns:
+        dict: Dictionary of node_id-public_ip key-val pairs
+
     """
     client = boto3.client('ec2')
     r_i = client.describe_instances(
@@ -39,8 +44,12 @@ def get_remote_cluster_ips(cluster_name='FebruaryTestNet'):
 def get_local_cluster_ips(node_count=32):
     """
     Creates a dictionary of local cluster ips
-    :param node_count: Number of local nodes created
-    :return: Dictionary of node_id-public_ip key-val pairs
+
+    Args:
+        node_count: (int) Number of local nodes created
+
+    Returns:
+        dict: Dictionary of {`node_id`: `public_ip`} key-val pairs
     """
     return {i: '172.1.1.{}'.format(100 + i) for i in range(node_count)}
 
@@ -48,15 +57,19 @@ def get_local_cluster_ips(node_count=32):
 def execute_command_on_cluster(cluster_name, commands, client=None, wait=True):
     """
     Runs commands on all instances of a cluster
-    :param cluster_name: value of `tag:aws:cloudformation:stack-name`
-    :param commands: a list of strings, each one a command to execute on the instances
-    :param client: a boto3 ssm client
-    :param wait: boolean to indicate whether to wait for command to successfully complete on all nodes
-    :return: the response from the send_command function (check the boto3 docs for ssm client.send_command() )
+
+    Args:
+        cluster_name (:obj:`str`): value of `tag:aws:cloudformation:stack-name`
+        commands (list(:obj:`str`)): a list of strings, each one a command to execute on the instances
+        client: a boto3 ssm client
+        wait (bool): whether to wait for command to successfully complete on all nodes
+
+    Returns:
+        dict: the response from the send_command function (check the boto3 docs for ssm client.send_command())
     """
     if client is None:
         client = boto3.client('ssm', region_name=REGION)
-    resp = client.send_command(
+    command_resp = client.send_command(
         Targets=[
             {
                 'Key': 'tag:aws:cloudformation:stack-name',
@@ -68,11 +81,11 @@ def execute_command_on_cluster(cluster_name, commands, client=None, wait=True):
         MaxConcurrency='100%',
         OutputS3BucketName='logos-bench-command-log',  # Note: remove if running in other regions than us-east-1!
     )
-    command_id = resp['Command']['CommandId']
+    command_id = command_resp['Command']['CommandId']
     print('Commands: \n\t{}'.format('\n\t'.join(commands)))
     print('Command id: \n\t{}'.format(command_id))
     if not wait:
-        return resp
+        return command_resp
     # poll command execution status
     else:
         # get cluster size first
@@ -121,12 +134,23 @@ def execute_command_on_cluster(cluster_name, commands, client=None, wait=True):
             counter = counter % 3 + 1
             if n_success == cluster_size:
                 print('\nAll succeeded')
-                return
+                return command_resp
 
             sleep(2)
 
 
 def restart_logos(cluster_name, clear_db=True, client=None):
+    """
+    Restarts logos_core on remote cluster
+
+    Args:
+        cluster_name (:obj:`str`): AWS Cloudformation cluster name
+        clear_db (bool): whether to wipe database on cluster
+        client: a boto3 ssm client
+
+    Returns:
+        dict: the response from the send_command function
+    """
     files_to_rm = get_files_to_remove(clear_db)
     commands = [
         'systemctl stop logos_core',
@@ -137,6 +161,17 @@ def restart_logos(cluster_name, clear_db=True, client=None):
 
 
 def update_logos(cluster_name, logos_id, clear_db=True, client=None):
+    """
+
+    Args:
+        cluster_name (:obj:`str`): AWS Cloudformation cluster name
+        logos_id (:obj:`str`): identifier of logos binary on S3 bucket
+        clear_db (bool): whether to wipe database on cluster
+        client: a boto3 ssm client
+
+    Returns:
+
+    """
     files_to_rm = get_files_to_remove(clear_db)
     commands = [
         'systemctl stop logos_core',
@@ -150,6 +185,20 @@ def update_logos(cluster_name, logos_id, clear_db=True, client=None):
 
 def update_config(cluster_name, config_id, new_generator=False, clear_db=True, callback=False,
                   callback_args=None, client=None):
+    """
+
+    Args:
+        cluster_name (:obj:`str`): AWS Cloudformation cluster name
+        config_id (:obj:`str`): identifier of config template on S3 bucket
+        new_generator (bool): whether to download latest gen_config.py
+        clear_db (bool): whether to wipe database on cluster
+        callback (bool): whether to use default callback webhook setup on node 0
+        callback_args (dict): dict specifying 'callback_address', 'callback_port', and/or 'callback_target'
+        client: a boto3 ssm client
+
+    Returns:
+
+    """
     files_to_rm = get_files_to_remove(clear_db)
     if callback_args is not None:
         assert all(k in ['callback_address', 'callback_port', 'callback_target'] for k in callback_args.keys())
@@ -183,8 +232,11 @@ def update_config(cluster_name, config_id, new_generator=False, clear_db=True, c
 def get_files_to_remove(clear_db=True):
     """
     Get string of all files to remove before restarting logos_core
-    :param clear_db: boolean flag indicating whether to wipe the database
-    :return: Return a space separated string of all files to remove
+    Args:
+        clear_db (bool): flag indicating whether to wipe the database
+
+    Returns:
+        :obj:`str`: a space separated string of all files to remove
     """
     files_to_rm = '{}/log/*'.format(DATA_PATH)
     if clear_db:

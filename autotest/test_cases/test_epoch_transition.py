@@ -36,6 +36,7 @@ class TestCaseMixin:
             print(' ' * 60, end='\r')
             print('|| Connect: {:2} | ETS: {:2} | ES: {:2} | ETE: {:2} || {}'.format(*counts, '.' * counter), end='\r')
             # TODO: test sending txns to different delegate classes in separate threads
+
             n_overlap = int(self.num_delegates * 5 / 4)
             if counts == [self.num_nodes, n_overlap, n_overlap, n_overlap]:
                 print('\nCount matched')
