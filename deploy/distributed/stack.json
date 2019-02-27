@@ -260,8 +260,8 @@
         "HVM64": "ami-09cc2ac032dabbdc8"
       },
       "gp2-us-east-1": {
-        "PV64": "ami-0c87adaf386a619f8",
-        "HVM64": "ami-0c87adaf386a619f8"
+        "PV64": "ami-0ec7e041a60fb0333",
+        "HVM64": "ami-0ec7e041a60fb0333"
       },
       "io1-us-west-1": {
         "PV64": "ami-0d57457a58db81c02",
@@ -565,6 +565,8 @@
           },
           "echo 'export PUBLIC_IP=$(curl http://169.254.169.254/latest/meta-data/public-ipv4)' >> /home/ubuntu/.bashrc && . /home/ubuntu/.bashrc\n",
           "# mkdir /home/ubuntu/bench/logs-efs && mount -t efs fs-10737f58:/ /home/ubuntu/bench/logs-efs\n",
+	  "aws s3 cp s3://logos-bench-", { "Ref" : "AWS::Region" }, "/helpers/db-tests /home/ubuntu/db-tests --recursive\n",
+	  "aws s3 cp s3://logos-bench-", { "Ref" : "AWS::Region" }, "/helpers/lmdb-reader /home/ubuntu/lmdb-reader --recursive\n",
           "aws s3 cp s3://logos-bench-", { "Ref" : "AWS::Region" }, "/helpers/prepare_local_files.sh /home/ubuntu/bench/prepare_local_files.sh\n",
           "sudo -H pip install boto3\n",
           "sudo chmod a+x /home/ubuntu/bench/prepare_local_files.sh\n",
