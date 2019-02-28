@@ -2,7 +2,7 @@ from utils import *
 
 
 class TestCaseMixin:
-
+    @skip
     def test_epoch_transition(self, num_worker_threads=32):
         """
         Signals the cluster to start epoch transition, then listens to epoch events [connect (C)|transition start (ETS)|
@@ -129,4 +129,3 @@ class TestCaseMixin:
                 'private': g_prv,
                 'public': g_pub,
             }
-

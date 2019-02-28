@@ -243,6 +243,7 @@ def get_files_to_remove(clear_db=True):
         files_to_rm += ' {ldb} {ldb}-lock'.format(ldb='{}/data.ldb'.format(DATA_PATH))
     return files_to_rm
 
+
 def run_db_test(cluster_name, client=None):
     commands = [
         'cd {}/../db-tests'.format(BENCH_DIR),

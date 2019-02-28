@@ -35,6 +35,7 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         self.num_delegates = num_delegates
         self.cluster = cluster_arg
 
+        # Preload accounts, create if file not present
         with open(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                                'data/accounts48000.pickle'), 'rb') as handle:
             self.accounts = pickle.load(handle)
@@ -44,32 +45,57 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
             } for k, v in self.accounts.items()}  # easier lookup
             self.account_list = list(self.accounts.values())
 
+        # Construct list of tests to rerun
+        self.reruns = []
+        for member_name in dir(self):
+            if member_name.startswith('test_'):
+                method = getattr(self, member_name)
+                if hasattr(method, '__call__') and hasattr(method, 'rerun_needed') and not hasattr(method, 'to_skip'):
+                    self.reruns.append(member_name)
+
     def run(self):
         num_test = 0
         num_passed = 0
-        for member in dir(self):
-            method = getattr(self, member)
-            if member.startswith('test_') and hasattr(method, '__call__'):
+        num_skipped = 0
+        for member_name in dir(self):
+            method = getattr(self, member_name)
+            if member_name.startswith('test_') and member_name not in self.reruns and hasattr(method, '__call__'):
                 num_test += 1
-                TestRequests.print_test_name(member.replace('_', ' ').upper())
+                if hasattr(method, 'to_skip'):
+                    num_skipped += 1
+                    print('Skipping {}'.format(to_test_name(member_name)))
+                    continue
+                TestRequests.print_test_name(to_test_name(member_name))
+
+                # main test
                 res = method()
                 if not res:
-                    print('Test failed! ')
+                    print('Test failed!')
                     break
+
+                # reruns
+                for rerun_test_name in self.reruns:
+                    print('\tRerunning {}'.format(to_test_name(rerun_test_name)))
+                    res = getattr(self, rerun_test_name)()
+                    if not res:
+                        print('Test rerun failed!')
+                        break
+                if not res:
+                    print('Test failed!')
+                    break
+
                 num_passed += 1
                 print("Test succeeded.")
         print("=" * WIDTH)
-        if(num_test == num_passed):
-            print("All tests succeeded!")
-        else:
-            print('FAIL: {} of {} tests passed'.format(num_passed, num_test))
+        print('{}: {} of {} tests passed, {} skipped'.format(
+            'SUCCESS' if num_test == (num_passed + num_skipped) else 'FAIL', num_passed, num_test, num_skipped))
 
     """
     Test cases
     """
 
-    def test_epoch_creation(self):
-        print('2')
+    def test_dummy(self):
+        print('DUMMY')
         return True
 
     """

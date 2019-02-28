@@ -240,3 +240,17 @@ def designated_delegate(pub, prev):
     # prev is zero
     indicator = pub if all(c == '0' for c in prev) else prev
     return int(indicator[-2:], 16) % 32
+
+
+def rerun_needed(method):
+    method.rerun_needed = True
+    return method
+
+
+def skip(method):
+    method.to_skip = True
+    return method
+
+
+def to_test_name(member_name):
+    return member_name.replace('_', ' ').upper()
