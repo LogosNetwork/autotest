@@ -4,6 +4,7 @@ from queue import Queue, Empty
 import random
 import requests
 import sys
+import threading
 from time import sleep, time
 
 g_account = 'lgs_3e3j5tkog48pnny9dmfzj1r16pg8t1e76dz5tmac6iq689wyjfpiij4txtdo'
@@ -185,21 +186,36 @@ class RemoteLogsHandler:
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         self.prv_k = paramiko.RSAKey.from_private_key_file(pem_path)
 
-    def get_command_output(self, command, node_id):
-        self.ssh.connect(self.ips[node_id], username='ubuntu', pkey=self.prv_k)
-        ssh_stdin, ssh_stdout, ssh_stderr = self.ssh.exec_command(command)
+    def get_command_output(self, command, node_id, ssh_client):
+        ssh_client.connect(self.ips[node_id], username='ubuntu', pkey=self.prv_k)
+        ssh_stdin, ssh_stdout, ssh_stderr = ssh_client.exec_command(command)
         lines = ssh_stdout.read()
         lines = lines.decode("utf-8")
-        self.ssh.close()
+        ssh_client.close()
         return lines.rstrip('\n')
 
     def collect_lines(self, command, node_id=None):
         all_lines = []
         if node_id is None:
-            for node_id in range(self.num_nodes):
-                all_lines.append(self.get_command_output(command, node_id))
+            lines_dict = {}
+
+            def get_command_output_thread(thread_n_id):
+                adhoc_ssh = paramiko.SSHClient()
+                adhoc_ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                lines_dict[thread_n_id] = self.get_command_output(command, thread_n_id, adhoc_ssh)
+
+            threads = []
+            for i in range(self.num_nodes):
+                t = threading.Thread(target=get_command_output_thread, args=(i,))
+                t.start()
+                threads.append(t)
+            for t in threads:
+                t.join()
+
+            for i in range(self.num_nodes):
+                all_lines.append(lines_dict.pop(i))
         else:
-            all_lines.append(self.get_command_output(command, node_id))
+            all_lines.append(self.get_command_output(command, node_id, self.ssh))
         return all_lines
 
     def grep_lines(self, pattern, node_id=None):

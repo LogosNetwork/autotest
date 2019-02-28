@@ -1,4 +1,18 @@
+from enum import Enum, auto
 from utils import *
+
+
+class EpochEvents(Enum):
+    Con = auto()
+    ETS = auto()
+    ES = auto()
+    ETE = auto()
+
+
+class DelegateTypes(Enum):
+    RETIRING = auto()
+    PERSISTENT = auto()
+    NEW = auto()
 
 
 class TestCaseMixin:
@@ -33,9 +47,11 @@ class TestCaseMixin:
             print('Skipping test. Num nodes {} num delegates'.format(self.num_nodes, self.num_delegates))
             return True
 
+        # construct new delegate mappings
         # get delegates for current and next epoch
-        cur_ds = self.nodes[0].epoch_delegates_current()
-        next_ds = self.nodes[0].epoch_delegates_next()
+        cur_ds = self.delegates[0].epoch_delegates_current()
+        next_ds = self.delegates[0].epoch_delegates_next()
+        new_delegate_nodes = {k: self.nodes[self.ip_to_i[v['ip']]] for k, v in next_ds.items()}  # TODO: actually translate private to public
 
         timeout = 600
         # first tell delegates to start_epoch_transition, no delay
@@ -68,26 +84,24 @@ class TestCaseMixin:
                 if i not in desired_counts:  # event already took place
                     continue
                 if count == desired_counts[i]:  # event just took place
-                    unfinished = True  # TODO: finish checking for transaction processing
-                    if not unfinished:
-                        # send transactions
-                        q = Queue()
-                        # list order: retiring, persistent, new
-                        d_ids = [0, 0, 0]  # TODO: finish epoch transition id logic
-                        accounts_to_send_from = [self.get_account_with_d_id(d_id) for d_id in d_ids]
-                        t_d_ids, request_data_list = zip(*[self.create_next_txn(
-                            accounts_to_send_from[j]['account'],
-                            accounts_to_send_from[j]['public'],
-                            accounts_to_send_from[j]['private'],
-                            g_account,
-                            d_id,
-                            1
-                        ) for j, d_id in enumerate(d_ids)])
-                        assert d_ids == t_d_ids, '{} != {} !!!'.format(d_ids, t_d_ids)  # sanity check, to be removed
+                    # send transactions
+                    q = Queue()
+                    # list order: retiring, persistent, new
+                    d_ids = [0, 0, 0]  # TODO: finish epoch transition id logic
+                    accounts_to_send_from = [self.get_account_with_d_id(d_id) for d_id in d_ids]
+                    t_d_ids, request_data_list = zip(*[self.create_next_txn(
+                        accounts_to_send_from[j]['account'],
+                        accounts_to_send_from[j]['public'],
+                        accounts_to_send_from[j]['private'],
+                        g_account,
+                        d_id,
+                        1
+                    ) for j, d_id in enumerate(d_ids)])
+                    assert d_ids == t_d_ids, '{} != {} !!!'.format(d_ids, t_d_ids)  # sanity check, to be removed
 
-                        for j, d_id in enumerate(d_ids):
-                            q.put((j, d_id, request_data_list[j]))
-                        _ = self.process_request_queue(q, d_ids, request_data_list, num_worker_threads)
+                    for j, d_id in enumerate(d_ids):
+                        q.put((j, d_id, request_data_list[j]))
+                    _ = self.process_request_queue(q, d_ids, request_data_list, num_worker_threads)
                     # Clear event
                     desired_counts.pop(i)
                 # keep on waiting
@@ -98,7 +112,6 @@ class TestCaseMixin:
             if time() - t0 > timeout:
                 return False
             counter = counter % 3 + 1
-            sleep(5)
 
         # Examine transactions and verify that epoch numbers are correct
         return True
