@@ -170,7 +170,7 @@ def update_logos(cluster_name, logos_id, clear_db=True, client=None):
         client: a boto3 ssm client
 
     Returns:
-
+        dict: the response from the send_command function
     """
     files_to_rm = get_files_to_remove(clear_db)
     commands = [
@@ -197,7 +197,7 @@ def update_config(cluster_name, config_id, new_generator=False, clear_db=True, c
         client: a boto3 ssm client
 
     Returns:
-
+        dict: the response from the send_command function
     """
     files_to_rm = get_files_to_remove(clear_db)
     if callback_args is not None:
@@ -242,3 +242,10 @@ def get_files_to_remove(clear_db=True):
     if clear_db:
         files_to_rm += ' {ldb} {ldb}-lock'.format(ldb='{}/data.ldb'.format(DATA_PATH))
     return files_to_rm
+
+def run_db_test(cluster_name, client=None):
+    commands = [
+        'cd {}/../db-tests'.format(BENCH_DIR),
+        'python run_test.py {}/LogosTest/data.ldb'.format(BENCH_DIR)
+    ]
+    return execute_command_on_cluster(cluster_name, commands, client)

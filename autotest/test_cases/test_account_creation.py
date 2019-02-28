@@ -1,4 +1,3 @@
-import queue
 import threading
 from tqdm.autonotebook import tqdm
 
@@ -15,7 +14,7 @@ class TestCaseMixin:
             return False
         return True
 
-    def create_accounts_parallel(self, powr=6, num_worker_threads=8):
+    def create_accounts_parallel(self, powr=5, num_worker_threads=8):
         r1_size = 30
         d_id = 0
         base_balance = 1000  # in milli-lgs
@@ -23,10 +22,10 @@ class TestCaseMixin:
         print('Creating initial account group of {} accounts'.format(r1_size), end='')
         for i in range(r1_size):
             account = self.accounts[i]
-            d_id, block_data = self.create_next_genesis_txn(account['account'], d_id, 2000000000000)
-            self.nodes[d_id].process(block_data['block'])
-            d_id = designated_delegate(g_pub, block_data['hash'])
-            if not self.wait_for_blocks_persistence([block_data['hash']]):
+            d_id, request_data = self.create_next_genesis_txn(account['account'], d_id, 2000000000000)
+            self.nodes[d_id].process(request_data['block'])
+            d_id = designated_delegate(g_pub, request_data['hash'])
+            if not self.wait_for_requests_persistence([request_data['hash']]):
                 sys.stderr.write('Creation stopped at index {}, account {}'.format(i, account['account']))
                 break
             print('.', end='')
@@ -43,7 +42,7 @@ class TestCaseMixin:
             send_amt = int(send_amt / 2)
             sender_size *= 2
 
-    def verify_account_creation(self, powr=6):
+    def verify_account_creation(self, powr=5):
         print('Verifying all accounts just got created...')
         err_dict = {}
         for i in tqdm(range(30 * (2 ** powr))):
@@ -56,12 +55,12 @@ class TestCaseMixin:
 
     def update_account_frontier(self, account_addr):
         info = self.nodes[0].account_info(account_addr)
-        self.account_frontiers[account_addr] = info['frontier']
+        self.account_frontiers[account_addr]['frontier'] = info['frontier']
 
     def send_and_confirm(self, sender_size, send_amt, num_worker_threads):
         d_ids = [random.randrange(0, self.num_delegates) for _ in range(sender_size)]
         accounts_to_create = self.account_list[sender_size:sender_size * 2]
-        d_ids, block_data_list = zip(*[self.create_next_txn(
+        d_ids, request_data_list = zip(*[self.create_next_txn(
             self.accounts[j]['account'],
             self.accounts[j]['public'],
             self.accounts[j]['private'],
@@ -69,22 +68,45 @@ class TestCaseMixin:
             d_ids[j],
             send_amt
         ) for j in range(sender_size)])
-        resps = {}
 
         # construct queue
-        q = queue.Queue()
+        q = Queue()
         for j in range(sender_size):
-            q.put((j, d_ids[j], block_data_list[j]))
+            q.put((j, d_ids[j], request_data_list[j]))
+        _ = self.process_request_queue(q, d_ids, request_data_list, num_worker_threads)
+
+        t1 = time()
+        requests_to_check = [request_data['hash'] for request_data in request_data_list]
+        if not self.wait_for_requests_persistence(requests_to_check):
+            return False
+        print('Time to wait for persistence: {:.6f}s'.format(time() - t1))
+        return True
+
+    def process_request_queue(self, q, d_ids, request_data_list, num_worker_threads):
+        """
+        Parallel send requests to respective designated delegates to process
+
+        Args:
+            q (:obj:`Queue`): Queue containing 3-tuples of `(i, d_id, request_data)`, where
+                `d_id = d_ids[i]` and `request_data = request_data_list[i]`
+            d_ids (dict):
+            request_data_list (list):
+            num_worker_threads (int): number of threads for parallel sending
+
+        Returns:
+            dict: dictionary mapping `{id: process_response}`
+        """
+        resps = {}
 
         # process worker thread
         def worker():
             while True:
                 try:
-                    j, d_id, block_data = q.get(block=False)
-                except queue.Empty:
+                    j, d_id, request_data = q.get(block=False)
+                except Empty:
                     break
                 try:
-                    resps[j] = self.nodes[d_ids[j]].process(block_data_list[j]['block'])
+                    resps[j] = self.nodes[d_ids[j]].process(request_data_list[j]['block'])
                 except LogosRPCError:
                     sys.stderr.write('Error at index {}!\n'.format(j))
                     raise
@@ -106,11 +128,7 @@ class TestCaseMixin:
 
         t1 = time()
         print('Time to process: {:.6f}s'.format(t1 - t0))
-        blocks_to_check = [block_data['hash'] for block_data in block_data_list]
-        if not self.wait_for_blocks_persistence(blocks_to_check):
-            return False
-        print('Time to wait for persistence: {:.6f}s'.format(time() - t1))
-        return True
+        return resps
 
     def create_next_txn(self, sender_addr, sender_pub, sender_prv, destination, designated_id=0, amount_mlgs=None):
         info_data = self.nodes[designated_id].account_info(sender_addr)
@@ -132,9 +150,21 @@ class TestCaseMixin:
     def create_next_genesis_txn(self, destination, designated_id=0, amount_mlgs=None):
         return self.create_next_txn(g_account, g_pub, g_prv, destination, designated_id, amount_mlgs)
 
-    # This assumes block persistence & account info update happen together
-    def wait_for_blocks_persistence(self, txn_hashes, max_batch=2000):
-        assert(all(LogosRpc.is_valid_hash(h) for h in txn_hashes))
+    def wait_for_requests_persistence(self, hashes, max_batch=2000, max_retries=30):
+        """
+        Checks if given request hashes are persisted
+        (This can be used to check if recipient accounts are created,
+        assuming block persistence & account info update happen together)
+
+        Args:
+            hashes (list(:obj:`str`)): list of request hash strings to check
+            max_batch (int): how many hashes should be queried in one RPC request
+            max_retries (int): number of retries after which the check fails
+
+        Returns:
+            bool: whether all blocks are persisted
+        """
+        assert(all(LogosRpc.is_valid_hash(h) for h in hashes))
 
         def batch(iterable, n=1):
             length = len(iterable)
@@ -150,14 +180,13 @@ class TestCaseMixin:
                     return False
             return True
 
-        max_retries = 30
         retries = 0
         t0 = time()
         while True:
-            if all(check_hash_persistence(txn_batch) for txn_batch in batch(txn_hashes, max_batch)):
+            if all(check_hash_persistence(txn_batch) for txn_batch in batch(hashes, max_batch)):
                 return True
             sleep(1)
             retries += 1
             if retries > max_retries and time() - t0 > 300:
-                print(self.nodes[0].blocks(txn_hashes))
+                print(self.nodes[0].blocks(hashes))
                 return False

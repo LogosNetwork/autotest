@@ -33,25 +33,36 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         self.nodes = {i: LogosRpc(ip) for i, ip in self.ips.items()}
         self.num_nodes = len(self.nodes)
         self.num_delegates = num_delegates
+        self.cluster = cluster_arg
 
         with open(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                                'data/accounts48000.pickle'), 'rb') as handle:
             self.accounts = pickle.load(handle)
-            self.account_frontiers = {v['account']: '0' * 32 for v in self.accounts.values() }  # easier lookup
+            self.account_frontiers = {v['account']: {
+                'frontier': '0' * 32,
+                'i': k
+            } for k, v in self.accounts.items()}  # easier lookup
             self.account_list = list(self.accounts.values())
 
     def run(self):
+        num_test = 0
+        num_passed = 0
         for member in dir(self):
             method = getattr(self, member)
             if member.startswith('test_') and hasattr(method, '__call__'):
+                num_test += 1
                 TestRequests.print_test_name(member.replace('_', ' ').upper())
                 res = method()
                 if not res:
                     print('Test failed! ')
                     break
+                num_passed += 1
                 print("Test succeeded.")
         print("=" * WIDTH)
-        print("All tests succeeded!")
+        if(num_test == num_passed):
+            print("All tests succeeded!")
+        else:
+            print('FAIL: {} of {} tests passed'.format(num_passed, num_test))
 
     """
     Test cases
@@ -119,9 +130,6 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
 
         return sum(int(line) if line else 0 for line in all_lines)
 
-    def designated_delegate_for_account(self, account_dict):  # note that this relies on a correct local frontiers
-        return designated_delegate(account_dict['public'], self.account_frontiers[account_dict['account']])
-
     @staticmethod
     def print_test_name(name):
         length = len(name)
@@ -134,5 +142,19 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
 
 
 if __name__ == '__main__':
-    test_case = TestRequests('InternalTest')
-    test_case.test_account_creation()
+    if len(sys.argv) > 2:
+        print('Expected Usage:  python3 run_test.py <cluster_name>\n')
+        sys.exit(0)
+    elif len(sys.argv) == 1:
+        cluster = 'InternalTest'
+    else:
+        cluster = sys.argv[1]
+        
+    if cluster is not 'InternalTest':
+        restart_logos(cluster)
+        
+    test_case = TestRequests(cluster)
+    while not test_case.is_cluster_initialized():
+        sleep(2)
+    
+    test_case.run()
