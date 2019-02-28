@@ -16,7 +16,7 @@ def get_remote_cluster_ips(cluster_name='FebruaryTestNet'):
         cluster_name (:obj:`str`): AWS Cloudformation cluster name
 
     Returns:
-        dict: Dictionary of node_id-public_ip key-val pairs
+        dict: Dictionary of node_id: {'PublicIpAddress': public_ip, 'PrivateIpAddress': private_ip} key-val pairs
 
     """
     client = boto3.client('ec2')
@@ -36,9 +36,12 @@ def get_remote_cluster_ips(cluster_name='FebruaryTestNet'):
         ],
     )
 
-    ips = sorted([i['PublicIpAddress'] for rs in r_i['Reservations'] for i in rs['Instances']])
+    ips = {i: v for i, v in enumerate(sorted([
+        {k: v for k, v in i.items() if k in ['PrivateIpAddress', 'PublicIpAddress']}
+        for rs in r_i['Reservations'] for i in rs['Instances']
+    ], key=lambda x: x['PublicIpAddress']))}
 
-    return {i: v for i, v in enumerate(ips)}
+    return ips
 
 
 def get_local_cluster_ips(node_count=32):
@@ -49,9 +52,14 @@ def get_local_cluster_ips(node_count=32):
         node_count: (int) Number of local nodes created
 
     Returns:
-        dict: Dictionary of {`node_id`: `public_ip`} key-val pairs
+        dict: Dictionary of node_id: {'PublicIpAddress': public_ip, 'PrivateIpAddress': private_ip} key-val pairs
     """
-    return {i: '172.1.1.{}'.format(100 + i) for i in range(node_count)}
+    def create_private_public_ip(i):
+        fake_addr = '172.1.1.{}'.format(100 + i)
+        # Use the same for consistency with remote
+        return {'PrivateIpAddress': fake_addr, 'PublicIpAddress': fake_addr}
+    ips = {i: create_private_public_ip(i) for i in range(node_count)}
+    return ips
 
 
 def execute_command_on_cluster(cluster_name, commands, client=None, wait=True):

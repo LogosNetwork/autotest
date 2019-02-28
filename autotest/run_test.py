@@ -27,11 +27,15 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         else:
             raise RuntimeError('Unsupported cluster arg type')
         self.ips = (get_remote_cluster_ips if self.remote else get_local_cluster_ips)(cluster_arg)
-        self.ip_to_i = {v: k for k, v in self.ips.items()}  # reverse mapping of ip to global index
+        # reverse mapping of ip to global index
+        self.ip_pub_to_i, self.ip_prv_to_i = {}, {}
+        for k, v in self.ips.items():
+            self.ip_pub_to_iv[v['PublicIpAddress']] = k
+            self.ip_prv_to_iv[v['PrivateIpAddress']] = k
         if not self.ips:
             raise RuntimeError('Error retrieving IPs for cluster, does cluster exist?')
         self.log_handler = (RemoteLogsHandler if self.remote else LocalLogsHandler)(self.ips)
-        self.nodes = {i: LogosRpc(ip) for i, ip in self.ips.items()}
+        self.nodes = {i: LogosRpc(ip['PublicIpAddress']) for i, ip in self.ips.items()}
         self.num_nodes = len(self.nodes)
         self.num_delegates = num_delegates
         self.delegates = {i: self.nodes[i] for i in range(self.num_delegates)}  # delegates currently in office

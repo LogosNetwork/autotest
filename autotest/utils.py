@@ -187,7 +187,7 @@ class RemoteLogsHandler:
         self.prv_k = paramiko.RSAKey.from_private_key_file(pem_path)
 
     def get_command_output(self, command, node_id, ssh_client):
-        ssh_client.connect(self.ips[node_id], username='ubuntu', pkey=self.prv_k)
+        ssh_client.connect(self.ips[node_id]['PublicIpAddress'], username='ubuntu', pkey=self.prv_k)
         ssh_stdin, ssh_stdout, ssh_stderr = ssh_client.exec_command(command)
         lines = ssh_stdout.read()
         lines = lines.decode("utf-8")

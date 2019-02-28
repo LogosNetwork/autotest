@@ -51,7 +51,8 @@ class TestCaseMixin:
         # get delegates for current and next epoch
         cur_ds = self.delegates[0].epoch_delegates_current()
         next_ds = self.delegates[0].epoch_delegates_next()
-        new_delegate_nodes = {k: self.nodes[self.ip_to_i[v['ip']]] for k, v in next_ds.items()}  # TODO: actually translate private to public
+        # Use prv because nodes themselves use each others' private IPs (for now)
+        new_delegate_nodes = {k: self.nodes[self.ip_prv_to_i[v['ip']]] for k, v in next_ds.items()}
 
         timeout = 600
         # first tell delegates to start_epoch_transition, no delay
@@ -112,6 +113,7 @@ class TestCaseMixin:
             if time() - t0 > timeout:
                 return False
             counter = counter % 3 + 1
+            sleep(2)
 
         # Examine transactions and verify that epoch numbers are correct
         return True
