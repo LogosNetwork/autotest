@@ -45,7 +45,7 @@ class LogosRpc:
 
     # main class function for invoking RPC calls
     def call(self, action, **kwargs):
-        message = {'action': action, **kwargs}
+        message = {'rpc_action': action, **kwargs}
         resp = requests.post(self.uri, json=message, headers={'Content-Type': 'application/json'})
         res = resp.json()
         if 'error' in res:
@@ -57,6 +57,9 @@ class LogosRpc:
 
     def account_info(self, account=g_account):
         return self.call('account_info', account=account)
+    
+    def account_balance(self,account=g_account):
+        return self.call('account_balance',account=account)
 
     def account_history(self, account=g_account, raw=True, count=100, head=''):
         msg = {'account': account, 'raw': 'true' if raw else 'false', 'count': count}
@@ -64,6 +67,9 @@ class LogosRpc:
             assert self.is_valid_hash(head)
             msg['head'] = head
         return self.call('account_history', **msg)
+    
+    def candidates(self):
+        return self.call('candidates')
 
     def key_create(self):
         return self.call('key_create')
@@ -71,21 +77,23 @@ class LogosRpc:
     def key_expand(self, key):
         return self.call('key_expand', key=key)
 
-    def block_create(self, amount, destination, previous, key=g_prv, representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS):
+    def block_create(self, amount, destination, previous, type="send",key=g_prv, representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS, votes=[],bls_key=''):
         return self.call(
             'block_create',
-            type='state',
-            key=key,
+            type=type,
+            private_key=key,
             amount=amount,
             representative=representative,
-            link=destination,
             previous=previous,
-            transaction_fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            next=previous,
+            votes=votes,
+            bls_key=bls_key,
+            fee=str(fee_mlgs) + '0' * MLGS_DEC,
             work='{0}'.format(random.randint(0, 1000000000))
         )
 
-    def process(self, block):
-        return self.call('process', block=block)
+    def process(self, request):
+        return self.call('process', request=request)
 
     def microblock_test(self):
         self.call('block_create_test')
@@ -163,6 +171,10 @@ class LogosRpc:
             prev = create_data['hash']
         process_dataset = [self.process(block_to_process['block']) for block_to_process in blocks_to_process]
         return process_dataset
+
+    def get_previous(self,acct):
+        info_data = self.account_info(acct)
+        return info_data['frontier']
 
 
 class RemoteLogsHandler:
