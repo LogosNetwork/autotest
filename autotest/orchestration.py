@@ -147,12 +147,14 @@ def execute_command_on_cluster(cluster_name, commands, client=None, wait=True):
             sleep(2)
 
 
-def restart_logos(cluster_name, clear_db=True, client=None):
+def restart_logos(cluster_name, command_line_options='', clear_db=True, client=None):
     """
     Restarts logos_core on remote cluster
 
     Args:
         cluster_name (:obj:`str`): AWS Cloudformation cluster name
+        command_line_options (:obj:`str`): additional command line options for starting logos_core
+            (other than --daemon --data_path /home/ubuntu/bench/LogosTest)
         clear_db (bool): whether to wipe database on cluster
         client: a boto3 ssm client
 
@@ -163,17 +165,20 @@ def restart_logos(cluster_name, clear_db=True, client=None):
     commands = [
         'systemctl stop logos_core',
         'rm -f {}'.format(files_to_rm),
-        'sleep 20 && systemctl start logos_core'
+        'sleep 20 && ' + gen_start_logos_command(command_line_options)
     ]
     return execute_command_on_cluster(cluster_name, commands, client)
 
 
-def update_logos(cluster_name, logos_id, clear_db=True, client=None):
+def update_logos(cluster_name, logos_id, command_line_options='', clear_db=True, client=None):
     """
+    Updates logos_core binary and restarts it on remote cluster
 
     Args:
         cluster_name (:obj:`str`): AWS Cloudformation cluster name
         logos_id (:obj:`str`): identifier of logos binary on S3 bucket
+        command_line_options (:obj:`str`): additional command line options for starting logos_core
+            (other than --daemon --data_path /home/ubuntu/bench/LogosTest)
         clear_db (bool): whether to wipe database on cluster
         client: a boto3 ssm client
 
@@ -186,9 +191,26 @@ def update_logos(cluster_name, logos_id, clear_db=True, client=None):
         'aws s3 cp s3://logos-bench-{}/binaries/{}/logos_core {}/logos_core'.format(REGION, logos_id, BENCH_DIR),
         'chmod a+x {}/logos_core'.format(BENCH_DIR),
         'rm -f {}'.format(files_to_rm),
-        'sleep 20 && systemctl start logos_core'
+        'sleep 20 && ' + gen_start_logos_command(command_line_options)
     ]
     return execute_command_on_cluster(cluster_name, commands, client)
+
+
+def gen_start_logos_command(command_line_options=''):
+    """
+    Generates bash command for starting logos_core as a systemd service
+
+    Args:
+        command_line_options (:obj:`str`): additional command line options for starting logos_core
+            (other than --daemon --data_path /home/ubuntu/bench/LogosTest)
+
+    Returns:
+        :obj:`str`: bash command string
+    """
+    # return 'systemctl -f stop logos_core{}'.format(
+    #     '_args@\"{}\".service'.format(command_line_options) if command_line_options else '')
+    return '/home/ubuntu/bench/logos_core --daemon --data_path /home/ubuntu/bench/LogosTest ' \
+           '{} > /dev/null 2>&1 &'.format(command_line_options)
 
 
 def update_config(cluster_name, config_id, new_generator=False, clear_db=True, callback=False,

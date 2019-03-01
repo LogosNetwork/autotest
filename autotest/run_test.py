@@ -30,8 +30,8 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         # reverse mapping of ip to global index
         self.ip_pub_to_i, self.ip_prv_to_i = {}, {}
         for k, v in self.ips.items():
-            self.ip_pub_to_iv[v['PublicIpAddress']] = k
-            self.ip_prv_to_iv[v['PrivateIpAddress']] = k
+            self.ip_pub_to_i[v['PublicIpAddress']] = k
+            self.ip_prv_to_i[v['PrivateIpAddress']] = k
         if not self.ips:
             raise RuntimeError('Error retrieving IPs for cluster, does cluster exist?')
         self.log_handler = (RemoteLogsHandler if self.remote else LocalLogsHandler)(self.ips)
@@ -107,6 +107,32 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
     """
     Helper functions
     """
+    def restart_logos_p2p(self, clear_db=True):
+        """
+        Restarts logos_core in p2p mode on remote cluster
+
+        Args:
+            clear_db (bool): whether to wipe database on cluster
+
+        Returns:
+            list(:obj:`str`): list of command output from each node
+        """
+        files_to_rm = get_files_to_remove(clear_db)
+        command_list = []
+        for i, ip_dict in self.ips.items():
+            command_line_options = '--bind {} --debug net '.format(ip_dict['PrivateIpAddress']) + \
+                                   ' '.join(['--addnode {}'.format(
+                                       self.ips[(i + inc) % self.num_nodes]['PrivateIpAddress']
+                                   ) for inc in [1, 4, 16]])
+            command = '\n'.join([
+                'sudo kill -9 $(pgrep logos_core)',
+                'sudo rm -f {}'.format(files_to_rm),
+                'sleep 20 && sudo ' + gen_start_logos_command(command_line_options),
+            ])
+            command_list.append(command)
+        _ = self.log_handler.execute_parallel_command(command_list, background=True)
+        # print('Succeeded on {} out of {} nodes'.format(sum(1 - bool(int(line)) for line in all_lines), self.num_nodes))
+        # TODO: check if process actually runs
 
     def is_cluster_initialized(self, from_all=False):
         if not self.is_cluster_running(None if from_all else 0):
@@ -169,6 +195,9 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         print('|' * WIDTH)
         print('|' * int((WIDTH - length) / 2) + name + '|' * int((WIDTH - length + 1) / 2))
         print('|' * WIDTH)
+
+    def ip_prv_to_pub(self, prv_ip):
+        return self.ips[self.ip_prv_to_i[prv_ip]]['PublicIpAddress']
 
 # TODO: regenerate delegate dict whenever epoch transition takes place
 

@@ -22,7 +22,7 @@ class TestCaseMixin:
         for i in range(r1_size):
             account = self.accounts[i]
             d_id, request_data = self.create_next_genesis_txn(account['account'], d_id, 2000000000000)
-            self.nodes[d_id].process(request_data['block'])
+            self.delegates[d_id].process(request_data['block'])
             d_id = designated_delegate(g_pub, request_data['hash'])
             if not self.wait_for_requests_persistence([request_data['hash']]):
                 sys.stderr.write('Creation stopped at index {}, account {}'.format(i, account['account']))
@@ -53,7 +53,7 @@ class TestCaseMixin:
         return err_dict
 
     def update_account_frontier(self, account_addr):
-        info = self.nodes[0].account_info(account_addr)
+        info = self.delegates[0].account_info(account_addr)
         self.account_frontiers[account_addr]['frontier'] = info['frontier']
 
     def send_and_confirm(self, sender_size, send_amt, num_worker_threads):
@@ -105,7 +105,7 @@ class TestCaseMixin:
                 except Empty:
                     break
                 try:
-                    resps[j] = self.nodes[d_ids[j]].process(request_data_list[j]['block'])
+                    resps[j] = self.delegates[d_ids[j]].process(request_data_list[j]['block'])
                 except LogosRPCError:
                     sys.stderr.write('Error at index {}!\n'.format(j))
                     raise
@@ -130,14 +130,14 @@ class TestCaseMixin:
         return resps
 
     def create_next_txn(self, sender_addr, sender_pub, sender_prv, destination, designated_id=0, amount_mlgs=None):
-        info_data = self.nodes[designated_id].account_info(sender_addr)
+        info_data = self.delegates[designated_id].account_info(sender_addr)
         prev = info_data['frontier']
         designated_id = designated_delegate(sender_pub, prev)
         if amount_mlgs is None:
             amount_mlgs = designated_id + 1
         assert isinstance(amount_mlgs, int)
         amount = str(amount_mlgs) + '0' * MLGS_DEC
-        create_data = self.nodes[designated_id].block_create(
+        create_data = self.delegates[designated_id].block_create(
             amount=amount,
             destination=destination,
             previous=prev,
@@ -174,7 +174,7 @@ class TestCaseMixin:
             # for i in range(self.num_nodes):
             for i in range(self.num_delegates):
                 try:
-                    self.nodes[i].blocks(hashes_to_check)
+                    self.delegates[i].blocks(hashes_to_check)
                 except LogosRPCError:
                     return False
             return True
@@ -187,5 +187,5 @@ class TestCaseMixin:
             sleep(1)
             retries += 1
             if retries > max_retries and time() - t0 > 300:
-                print(self.nodes[0].blocks(hashes))
+                print(self.delegates[0].blocks(hashes))
                 return False

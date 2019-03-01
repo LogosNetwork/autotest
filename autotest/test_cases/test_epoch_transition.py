@@ -1,4 +1,5 @@
 from enum import Enum, auto
+from random import choice
 from utils import *
 
 
@@ -16,7 +17,7 @@ class DelegateTypes(Enum):
 
 
 class TestCaseMixin:
-    @skip
+
     def test_epoch_transition(self, num_worker_threads=32):
         """
         Signals the cluster to start epoch transition, then listens to epoch events [connect (C)|transition start (ETS)|
@@ -47,12 +48,32 @@ class TestCaseMixin:
             print('Skipping test. Num nodes {} num delegates'.format(self.num_nodes, self.num_delegates))
             return True
 
+        # Matches doc string above
+        event_del_accept = [
+            [1, 1, 0],
+            [1, 1, 1],
+            [0, 1, 1],
+            [0, 1, 1],
+        ]
+
         # construct new delegate mappings
-        # get delegates for current and next epoch
-        cur_ds = self.delegates[0].epoch_delegates_current()
-        next_ds = self.delegates[0].epoch_delegates_next()
-        # Use prv because nodes themselves use each others' private IPs (for now)
-        new_delegate_nodes = {k: self.nodes[self.ip_prv_to_i[v['ip']]] for k, v in next_ds.items()}
+        # get delegates for current and next epoch (convert from private IPs first)
+        cur_dels = {int(k): self.ip_prv_to_pub(v['ip']) for k, v in self.delegates[0].epoch_delegates_current().items()}
+        next_dels = {int(k): self.ip_prv_to_pub(v['ip']) for k, v in self.delegates[0].epoch_delegates_next().items()}
+        new_delegate_nodes = {k: self.nodes[self.ip_pub_to_i[v]] for k, v in next_dels.items()}
+        # essentially a two-way dictionary for easier lookup
+        cur_dels_two_way = {k: v for k0, v0 in cur_dels.items() for k, v in ((k0, v0), (v0, k0))}
+        next_dels_two_way = {k: v for k0, v0 in next_dels.items() for k, v in ((k0, v0), (v0, k0))}
+        cur_set, next_set = set(v for v in cur_dels.values()), set(v for v in next_dels.values())
+        persistent_set = cur_set.intersection(next_set)
+        old_dels = {cur_dels_two_way[ip]: ip for ip in (cur_set - next_set)}
+        new_dels = {next_dels_two_way[ip]: ip for ip in (next_set - cur_set)}
+        persistent_dels_old = {cur_dels_two_way[ip]: ip for ip in persistent_set}
+        persistent_dels_new = {next_dels_two_way[ip]: ip for ip in persistent_set}
+        print(old_dels)
+        print(new_dels)
+        print(persistent_dels_old)
+        print(persistent_dels_new)
 
         timeout = 600
         # first tell delegates to start_epoch_transition, no delay
@@ -85,10 +106,16 @@ class TestCaseMixin:
                 if i not in desired_counts:  # event already took place
                     continue
                 if count == desired_counts[i]:  # event just took place
+                    print('\n')
+                    if i == 2:
+                        self.delegates = new_delegate_nodes  # change delegates in office
                     # send transactions
                     q = Queue()
-                    # list order: retiring, persistent, new
-                    d_ids = [0, 0, 0]  # TODO: finish epoch transition id logic
+                    d_ids = [
+                        choice(list(old_dels.keys())),  # retiring
+                        choice(list((persistent_dels_old if i < 2 else persistent_dels_new).keys())),  # persistent
+                        choice(list(new_dels.keys())),  # new
+                    ]
                     accounts_to_send_from = [self.get_account_with_d_id(d_id) for d_id in d_ids]
                     t_d_ids, request_data_list = zip(*[self.create_next_txn(
                         accounts_to_send_from[j]['account'],
@@ -98,11 +125,35 @@ class TestCaseMixin:
                         d_id,
                         1
                     ) for j, d_id in enumerate(d_ids)])
-                    assert d_ids == t_d_ids, '{} != {} !!!'.format(d_ids, t_d_ids)  # sanity check, to be removed
+                    assert set(d_ids) == set(t_d_ids), '{} != {} !!!'.format(d_ids, t_d_ids)  # sanity check, to be removed
 
                     for j, d_id in enumerate(d_ids):
                         q.put((j, d_id, request_data_list[j]))
                     _ = self.process_request_queue(q, d_ids, request_data_list, num_worker_threads)
+
+                    for j, request_data in enumerate(request_data_list):
+                        should_accept = event_del_accept[i][j]
+                        if should_accept:
+                            account_addr = accounts_to_send_from[j]['account']
+                            retries, max_retries = 0, 10
+                            while True:
+                                try:
+                                    self.update_account_frontier(account_addr=account_addr)
+                                    assert self.account_frontiers[account_addr]['frontier'] == request_data['hash']
+                                    break
+                                except LogosRPCError as e:
+                                    print(e.__dict__)
+                                except AssertionError:
+                                    pass
+                                retries += 1
+                                if retries >= max_retries:
+                                    return False
+                                sleep(2)
+
+                        # manual inspection debugging, to remove
+                        all_lines = self.log_handler.grep_lines(request_data['hash'])
+                        pprint_log_lines(all_lines)
+
                     # Clear event
                     desired_counts.pop(i)
                 # keep on waiting

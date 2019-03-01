@@ -186,36 +186,52 @@ class RemoteLogsHandler:
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         self.prv_k = paramiko.RSAKey.from_private_key_file(pem_path)
 
-    def get_command_output(self, command, node_id, ssh_client):
+    def get_command_output(self, command, node_id, ssh_client, background=False):
         ssh_client.connect(self.ips[node_id]['PublicIpAddress'], username='ubuntu', pkey=self.prv_k)
-        ssh_stdin, ssh_stdout, ssh_stderr = ssh_client.exec_command(command)
-        lines = ssh_stdout.read()
-        lines = lines.decode("utf-8")
+        if background:
+            transport = ssh_client.get_transport()
+            channel = transport.open_session()
+            channel.exec_command(command)
+            lines = ''
+        else:
+            ssh_stdin, ssh_stdout, ssh_stderr = ssh_client.exec_command(command)
+            lines = ssh_stdout.read()
+            lines = lines.decode("utf-8")
         ssh_client.close()
         return lines.rstrip('\n')
 
-    def collect_lines(self, command, node_id=None):
+    def execute_parallel_command(self, command, background=False):
+        single_command = isinstance(command, str)
+        if not single_command:
+            assert isinstance(command, list) and \
+                   len(command) == self.num_nodes and \
+                   all(isinstance(c, str) for c in command)
         all_lines = []
+        lines_dict = {}
+
+        def get_command_output_thread(thread_n_id, node_command):
+            adhoc_ssh = paramiko.SSHClient()
+            adhoc_ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            lines_dict[thread_n_id] = self.get_command_output(node_command, thread_n_id, adhoc_ssh, background)
+
+        threads = []
+        for i in range(self.num_nodes):
+            t = threading.Thread(target=get_command_output_thread, args=(i, command if single_command else command[i]))
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join()
+
+        for i in range(self.num_nodes):
+            all_lines.append(lines_dict.pop(i))
+
+        return all_lines
+
+    def collect_lines(self, command, node_id=None):
         if node_id is None:
-            lines_dict = {}
-
-            def get_command_output_thread(thread_n_id):
-                adhoc_ssh = paramiko.SSHClient()
-                adhoc_ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                lines_dict[thread_n_id] = self.get_command_output(command, thread_n_id, adhoc_ssh)
-
-            threads = []
-            for i in range(self.num_nodes):
-                t = threading.Thread(target=get_command_output_thread, args=(i,))
-                t.start()
-                threads.append(t)
-            for t in threads:
-                t.join()
-
-            for i in range(self.num_nodes):
-                all_lines.append(lines_dict.pop(i))
+            all_lines = self.execute_parallel_command(command)
         else:
-            all_lines.append(self.get_command_output(command, node_id, self.ssh))
+            all_lines = [self.get_command_output(command, node_id, self.ssh)]
         return all_lines
 
     def grep_lines(self, pattern, node_id=None):
@@ -270,3 +286,11 @@ def skip(method):
 
 def to_test_name(member_name):
     return member_name.replace('_', ' ').upper()
+
+
+def pprint_log_lines(all_lines):
+    print('\n')
+    for i, lines in enumerate(all_lines):
+        print('NODE {}:'.format(i))
+        for line in lines.split('\n'):
+            print(line.replace('\\\\', '\\'))
