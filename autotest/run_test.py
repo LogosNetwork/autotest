@@ -123,7 +123,7 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
             command_line_options = '--bind {} --debug net '.format(ip_dict['PrivateIpAddress']) + \
                                    ' '.join(['--addnode {}'.format(
                                        self.ips[(i + inc) % self.num_nodes]['PrivateIpAddress']
-                                   ) for inc in [1, 4, 16]])
+                                   ) for inc in [1, 4, 16, 32]])
             command = '\n'.join([
                 'sudo kill -9 $(pgrep logos_core)',
                 'sudo rm -f {}'.format(files_to_rm),

@@ -291,6 +291,8 @@ def to_test_name(member_name):
 def pprint_log_lines(all_lines):
     print('\n')
     for i, lines in enumerate(all_lines):
+        if not lines:
+            continue
         print('NODE {}:'.format(i))
         for line in lines.split('\n'):
             print(line.replace('\\\\', '\\'))

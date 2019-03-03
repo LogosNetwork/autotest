@@ -343,6 +343,20 @@
         }
       }
     },
+    "P2PIngress": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Ref": "InstanceSecurityGroup"
+        },
+        "IpProtocol": "tcp",
+        "FromPort": "14495",
+        "ToPort": "14495",
+        "SourceSecurityGroupId": {
+          "Ref": "InstanceSecurityGroup"
+        }
+      }
+    },
     "BenchNodeIAMInstanceProfile": {
       "Type": "AWS::IAM::InstanceProfile",
       "Properties": {

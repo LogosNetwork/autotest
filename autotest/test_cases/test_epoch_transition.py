@@ -129,6 +129,7 @@ class TestCaseMixin:
 
                     for j, d_id in enumerate(d_ids):
                         q.put((j, d_id, request_data_list[j]))
+                    print(request_data_list)
                     _ = self.process_request_queue(q, d_ids, request_data_list, num_worker_threads)
 
                     for j, request_data in enumerate(request_data_list):
@@ -147,6 +148,7 @@ class TestCaseMixin:
                                     pass
                                 retries += 1
                                 if retries >= max_retries:
+                                    print('\nMax retries reached!')
                                     return False
                                 sleep(2)
 
@@ -162,6 +164,7 @@ class TestCaseMixin:
                 print('\nCount matched')
                 break
             if time() - t0 > timeout:
+                print('\nTimed out!')
                 return False
             counter = counter % 3 + 1
             sleep(2)

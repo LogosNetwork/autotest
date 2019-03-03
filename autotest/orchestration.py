@@ -163,7 +163,8 @@ def restart_logos(cluster_name, command_line_options='', clear_db=True, client=N
     """
     files_to_rm = get_files_to_remove(clear_db)
     commands = [
-        'systemctl stop logos_core',
+        # 'systemctl stop logos_core',
+        'kill -9 $(pgrep logos_core)'
         'rm -f {}'.format(files_to_rm),
         'sleep 20 && ' + gen_start_logos_command(command_line_options)
     ]
@@ -187,7 +188,8 @@ def update_logos(cluster_name, logos_id, command_line_options='', clear_db=True,
     """
     files_to_rm = get_files_to_remove(clear_db)
     commands = [
-        'systemctl stop logos_core',
+        # 'systemctl stop logos_core',
+        'kill -9 $(pgrep logos_core)',
         'aws s3 cp s3://logos-bench-{}/binaries/{}/logos_core {}/logos_core'.format(REGION, logos_id, BENCH_DIR),
         'chmod a+x {}/logos_core'.format(BENCH_DIR),
         'rm -f {}'.format(files_to_rm),
@@ -242,7 +244,8 @@ def update_config(cluster_name, config_id, new_generator=False, clear_db=True, c
         callback_str = ''
 
     commands = [
-        'systemctl stop logos_core',
+        # 'systemctl stop logos_core',
+        'kill -9 $(pgrep logos_core)',
         'aws s3 cp s3://logos-bench-{}/helpers/gen_config.py {}/gen_config.py'.format(REGION, BENCH_DIR)
         if new_generator else '',
         'aws s3 cp s3://logos-bench-{region}/configs/{conf_id}/bench.json.tmpl {bench_dir}/config/bench.json.tmpl && '
@@ -280,3 +283,82 @@ def run_db_test(cluster_name, client=None):
         'python run_test.py {}/LogosTest/data.ldb'.format(BENCH_DIR)
     ]
     return execute_command_on_cluster(cluster_name, commands, client)
+
+
+def stop_cluster_instances(cluster_name):
+    # 1. stop ASG from auto-launching new instances
+    asg_name = get_cluster_asg_name(cluster_name)
+
+    asc_client = boto3.client('autoscaling', region_name=REGION)
+    _ = asc_client.suspend_processes(
+        AutoScalingGroupName=asg_name,
+        ScalingProcesses=['Launch'],
+    )
+
+    # 2. protect instances from scale in
+    ec2_client = boto3.client('ec2', region_name=REGION)
+    ids_to_stop = get_cluster_instance_ids_by_state(cluster_name, 'running', ec2_client)
+
+    _ = asc_client.set_instance_protection(
+        InstanceIds=ids_to_stop,
+        AutoScalingGroupName=asg_name,
+        ProtectedFromScaleIn=True
+    )
+
+    # 3. stop instances
+    _ = ec2_client.stop_instances(InstanceIds=ids_to_stop)
+
+
+def start_cluster_instances(cluster_name):
+
+    # 1. start instances
+    ec2_client = boto3.client('ec2', region_name=REGION)
+    ids_to_start = get_cluster_instance_ids_by_state(cluster_name, 'stopped', ec2_client)
+
+    _ = ec2_client.start_instances(InstanceIds=ids_to_start)
+
+    # 2. disable protection from scale in
+    asg_name = get_cluster_asg_name(cluster_name)
+    asc_client = boto3.client('autoscaling', region_name=REGION)
+    _ = asc_client.set_instance_protection(
+        InstanceIds=ids_to_start,
+        AutoScalingGroupName=asg_name,
+        ProtectedFromScaleIn=False
+    )
+
+    # 3. resume ASG auto launch
+    _ = asc_client.resume_processes(
+        AutoScalingGroupName=asg_name,
+        ScalingProcesses=['Launch'],
+    )
+
+
+def get_cluster_instance_ids_by_state(cluster_name, state_name='running', ec2_client=None):
+    if ec2_client is None:
+        ec2_client = boto3.client('ec2', region_name=REGION)
+    filters = [
+        {
+            'Name': 'instance-state-name',
+            'Values': [state_name]
+        }, {
+            'Name': 'tag:aws:cloudformation:stack-name',
+            'Values': [cluster_name]
+        }
+    ]
+
+    resp = ec2_client.describe_instances(Filters=filters)
+    ids = ec2ids_from_resp(resp)
+    return ids
+
+
+def get_cluster_asg_name(cluster_name):
+    cfn_client = boto3.client('cloudformation', region_name=REGION)
+    asg_name = cfn_client.describe_stack_resource(
+        StackName=cluster_name,
+        LogicalResourceId='AutoScalingGroup'
+    )['StackResourceDetail']['PhysicalResourceId']
+    return asg_name
+
+
+def ec2ids_from_resp(resp):
+    return [ins['InstanceId'] for res in resp['Reservations'] for ins in res['Instances']]
