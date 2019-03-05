@@ -63,3 +63,30 @@ If you want a test to be rerun after each test case finishes, e.g. a database sa
     def test_to_rerun:
 ``` 
 Then this test won't be run standalone, but rather after each of the other standalone tests completes. As a concrete example, if out of tests A, B, C test A has `@rerun_needed`, then a possible execution sequence will be `(B -> A) -> (C -> A)`.
+
+#### Example
+```
+from utils import *
+from orchestration import *
+
+class TestCaseMixin:
+    
+    def test_example(self):
+#===========================================================================================
+# 1 Action tested:
+#    RPC Call (microblock_test()) to trigger action on node 
+
+        del_id = 0        
+        res = self.nodes[del_id].microblock_test()
+#===========================================================================================
+# 2 Feedback
+#    RemoteLogsHandler grep_lines() to find pattern in node's logs
+        primary_str = self.log_handler.grep_lines('ConsensusManager<MicroBlock>::OnSendRequest')[0]
+
+#===========================================================================================
+# 3 Logic
+#    Parse lines and test conditions, return True/False
+        entries = primary_str.split('\n')[-1]
+        
+        return entries == self.num_delegates
+```
