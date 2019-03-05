@@ -137,6 +137,9 @@ class LogosRpc:
 
     def epochs(self, hashes):
         return self._consensus_blocks('epochs', hashes)
+    
+    def epoch_latest(self):
+        return self.call("epochs_latest",count=1)
 
     def epochs_latest(self, count='100', head=''):
         call_dict = {'count': count}
