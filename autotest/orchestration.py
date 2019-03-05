@@ -215,13 +215,15 @@ def gen_start_logos_command(command_line_options=''):
            '{} > /dev/null 2>&1 &'.format(command_line_options)
 
 
-def update_config(cluster_name, config_id, new_generator=False, clear_db=True, callback=False,
+def update_config(cluster_name, config_id, command_line_options='', new_generator=False, clear_db=True, callback=False,
                   callback_args=None, client=None):
     """
 
     Args:
         cluster_name (:obj:`str`): AWS Cloudformation cluster name
         config_id (:obj:`str`): identifier of config template on S3 bucket
+        command_line_options (:obj:`str`): additional command line options for starting logos_core
+            (other than --daemon --data_path /home/ubuntu/bench/LogosTest)
         new_generator (bool): whether to download latest gen_config.py
         clear_db (bool): whether to wipe database on cluster
         callback (bool): whether to use default callback webhook setup on node 0
@@ -257,7 +259,7 @@ def update_config(cluster_name, config_id, new_generator=False, clear_db=True, c
             data_path=DATA_PATH
         ),
         'rm -f {}'.format(files_to_rm),
-        'sleep 20 && systemctl start logos_core'
+        'sleep 20 && ' + gen_start_logos_command(command_line_options)
     ]
     return execute_command_on_cluster(cluster_name, commands, client)
 

@@ -42,11 +42,12 @@ class TestCaseMixin:
 
         # construct queue
         q = Queue()
-        for j in range(sender_size):
-            q.put((j, d_ids[j], request_data_list[j]))
         if backup:
             d_ids = tuple(x+1 for x in d_ids)
-        _ = self.process_request_queue(q, d_ids, request_data_list, num_worker_threads)
+        d_ids = [self.del_id_to_node_id(d_id) for d_id in d_ids]
+        for j in range(sender_size):
+            q.put((j, d_ids[j], request_data_list[j]))
+        _ = self.process_request_queue(q, num_worker_threads)
 
         t1 = time()
         requests_to_check = [request_data['hash'] for request_data in request_data_list]

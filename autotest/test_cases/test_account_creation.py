@@ -69,9 +69,12 @@ class TestCaseMixin:
 
         # construct queue
         q = Queue()
+        # translate designated delegate ids into node ids
+        d_ids = [self.del_id_to_node_id(d_id) for d_id in d_ids]
+
         for j in range(sender_size):
             q.put((j, d_ids[j], request_data_list[j]))
-        _ = self.process_request_queue(q, d_ids, request_data_list, num_worker_threads)
+        _ = self.process_request_queue(q, num_worker_threads)
 
         t1 = time()
         requests_to_check = [request_data['hash'] for request_data in request_data_list]
@@ -80,15 +83,14 @@ class TestCaseMixin:
         print('Time to wait for persistence: {:.6f}s'.format(time() - t1))
         return True
 
-    def process_request_queue(self, q, d_ids, request_data_list, num_worker_threads):
+    def process_request_queue(self, q, num_worker_threads):
         """
         Parallel send requests to respective designated delegates to process
 
         Args:
             q (:obj:`Queue`): Queue containing 3-tuples of `(i, d_id, request_data)`, where
-                `d_id = d_ids[i]` and `request_data = request_data_list[i]`
-            d_ids (dict):
-            request_data_list (list):
+                `d_id` is the index of the *node* (not delegate!) to process the request and
+                `request_data` is the request data returned by `self.create_next_txn`
             num_worker_threads (int): number of threads for parallel sending
 
         Returns:
@@ -104,10 +106,10 @@ class TestCaseMixin:
                 except Empty:
                     break
                 try:
-                    resps[j] = self.delegates[d_ids[j]].process(request_data_list[j]['block'])
-                except LogosRPCError:
+                    resps[j] = self.nodes[d_id].process(request_data['block'])
+                except LogosRPCError as e:
                     sys.stderr.write('Error at index {}!\n'.format(j))
-                    raise
+                    resps[j] = e.__dict__
                 q.task_done()
 
         t0 = time()
@@ -185,6 +187,6 @@ class TestCaseMixin:
                 return True
             sleep(1)
             retries += 1
-            if retries > max_retries and time() - t0 > 300:
+            if retries > max_retries and time() - t0 > 90:
                 print(self.delegates[0].blocks(hashes))
                 return False

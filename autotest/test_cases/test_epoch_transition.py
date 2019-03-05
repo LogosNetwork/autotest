@@ -1,19 +1,5 @@
-from enum import Enum, auto
 from random import choice
 from utils import *
-
-
-class EpochEvents(Enum):
-    Con = auto()
-    ETS = auto()
-    ES = auto()
-    ETE = auto()
-
-
-class DelegateTypes(Enum):
-    RETIRING = auto()
-    PERSISTENT = auto()
-    NEW = auto()
 
 
 class TestCaseMixin:
@@ -66,16 +52,13 @@ class TestCaseMixin:
         next_dels_two_way = {k: v for k0, v0 in next_dels.items() for k, v in ((k0, v0), (v0, k0))}
         cur_set, next_set = set(v for v in cur_dels.values()), set(v for v in next_dels.values())
         persistent_set = cur_set.intersection(next_set)
+        # retiring and new delegates
         old_dels = {cur_dels_two_way[ip]: ip for ip in (cur_set - next_set)}
         new_dels = {next_dels_two_way[ip]: ip for ip in (next_set - cur_set)}
+        # persistent delegates will have different index values in the next epoch
         persistent_dels_old = {cur_dels_two_way[ip]: ip for ip in persistent_set}
         persistent_dels_new = {next_dels_two_way[ip]: ip for ip in persistent_set}
-        print(old_dels)
-        print(new_dels)
-        print(persistent_dels_old)
-        print(persistent_dels_new)
 
-        timeout = 600
         # first tell delegates to start_epoch_transition, no delay
         for node in self.nodes.values():
             resp = node.call('start_epoch_transition')
@@ -93,14 +76,19 @@ class TestCaseMixin:
         n_overlap = int(self.num_delegates * 5 / 4)
         desired_counts = {i: v for i, v in enumerate([self.num_nodes, n_overlap, n_overlap, n_overlap])}
 
+        timeout = 600
         t0 = time()
         counter = 0
+        # Keep polling node logs in order to register epoch transition events
         while True:
+
+            # Get event counts
             count_strings = self.log_handler.collect_lines(command)
             counts = [[int(s) for s in line.rstrip('\n').split('\n')] for line in count_strings]
             counts = [sum(zipped) for zipped in zip(*counts)]
             print(' ' * 60, end='\r')
             print('|| Connect: {:2} | ETS: {:2} | ES: {:2} | ETE: {:2} || {}'.format(*counts, '.' * counter), end='\r')
+
             # Check for each event
             for i, count in enumerate(counts):
                 if i not in desired_counts:  # event already took place
@@ -109,13 +97,17 @@ class TestCaseMixin:
                     print('\n')
                     if i == 2:
                         self.delegates = new_delegate_nodes  # change delegates in office
-                    # send transactions
+
+                    # prepare and send transactions
                     q = Queue()
+                    # randomly choose a delegate id for each of the transition groups
                     d_ids = [
                         choice(list(old_dels.keys())),  # retiring
                         choice(list((persistent_dels_old if i < 2 else persistent_dels_new).keys())),  # persistent
                         choice(list(new_dels.keys())),  # new
                     ]
+
+                    # retrieve an existing account whose next transaction will get processed by the designated delegate
                     accounts_to_send_from = [self.get_account_with_d_id(d_id) for d_id in d_ids]
                     t_d_ids, request_data_list = zip(*[self.create_next_txn(
                         accounts_to_send_from[j]['account'],
@@ -127,10 +119,18 @@ class TestCaseMixin:
                     ) for j, d_id in enumerate(d_ids)])
                     assert set(d_ids) == set(t_d_ids), '{} != {} !!!'.format(d_ids, t_d_ids)  # sanity check, to be removed
 
+                    # convert designated delegate indices to actual node indices (for processing)
+                    d_ids = [
+                        self.ip_pub_to_i[old_dels[d_ids[0]]],
+                        self.ip_pub_to_i[(persistent_dels_old if i < 2 else persistent_dels_new)[d_ids[1]]],
+                        self.ip_pub_to_i[new_dels[d_ids[2]]],
+                    ]
+
+                    # put transactions in queue and process
                     for j, d_id in enumerate(d_ids):
                         q.put((j, d_id, request_data_list[j]))
                     print(request_data_list)
-                    _ = self.process_request_queue(q, d_ids, request_data_list, num_worker_threads)
+                    resp = self.process_request_queue(q, num_worker_threads)
 
                     for j, request_data in enumerate(request_data_list):
                         should_accept = event_del_accept[i][j]
@@ -151,6 +151,8 @@ class TestCaseMixin:
                                     print('\nMax retries reached!')
                                     return False
                                 sleep(2)
+                        else:
+                            sys.stderr.write('{}\n'.format(resp[j]))
 
                         # manual inspection debugging, to remove
                         all_lines = self.log_handler.grep_lines(request_data['hash'])

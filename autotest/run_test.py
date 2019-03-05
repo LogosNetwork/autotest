@@ -38,7 +38,7 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         self.nodes = {i: LogosRpc(ip['PublicIpAddress']) for i, ip in self.ips.items()}
         self.num_nodes = len(self.nodes)
         self.num_delegates = num_delegates
-        self.delegates = {i: self.nodes[i] for i in range(self.num_delegates)}  # delegates currently in office
+        self.reset_delegates()
         self.cluster = cluster_arg
         self.num_accounts = 60
 
@@ -123,8 +123,8 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         for i, ip_dict in self.ips.items():
             command_line_options = '--bind {} --debug net '.format(ip_dict['PrivateIpAddress']) + \
                                    ' '.join(['--addnode {}'.format(
-                                       self.ips[(i + inc) % self.num_nodes]['PrivateIpAddress']
-                                   ) for inc in [1, 4, 16, 32]])
+                                       self.ips[(i + inc) % self.num_nodes]['PublicIpAddress']
+                                   ) for inc in [1, 4, 16]])
             command = '\n'.join([
                 'sudo kill -9 $(pgrep logos_core)',
                 'sudo rm -f {}'.format(files_to_rm),
@@ -134,9 +134,13 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         _ = self.log_handler.execute_parallel_command(command_list, background=True)
         # print('Succeeded on {} out of {} nodes'.format(sum(1 - bool(int(line)) for line in all_lines), self.num_nodes))
         # TODO: check if process actually runs
+        self.reset_delegates()
+
+    def reset_delegates(self):
+        self.delegates = {i: self.nodes[i] for i in range(self.num_delegates)}  # delegates currently in office
 
     def is_cluster_initialized(self, from_all=False):
-        if not self.is_cluster_running(None if from_all else 0):
+        if not self.is_cluster_running(None if from_all else 0, verbose=False):
             return False
 
         pattern = 'Received Post_Commit'
@@ -159,12 +163,12 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
             if not pid:
                 if verbose:
                     print('Node {} with ip {} is not running logos_core'.format(i, self.ips[i]))
-                running = True
+                running = False
         err_lines = self.log_handler.grep_lines('(error|fatal)]', node_id)
         for i, err_line in enumerate(err_lines):
             if err_line:
                 print('Node {} with ip {} reported the following error: {}\n'.format(i, self.ips[i], err_line))
-                running = True
+                # running = False
         return running
 
     def get_stored_request_count(self, node_id=None):
@@ -199,6 +203,9 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
 
     def ip_prv_to_pub(self, prv_ip):
         return self.ips[self.ip_prv_to_i[prv_ip]]['PublicIpAddress']
+
+    def del_id_to_node_id(self, del_id):
+        return self.ip_pub_to_i[self.delegates[del_id].ip]
 
 # TODO: regenerate delegate dict whenever epoch transition takes place
 
