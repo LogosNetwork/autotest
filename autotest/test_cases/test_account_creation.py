@@ -5,16 +5,15 @@ from utils import *
 
 class TestCaseMixin:
 
-    def test_account_creation(self, num_worker_threads=32, pwr=5):
-        self.create_accounts_parallel(pwr, num_worker_threads=num_worker_threads)
+    def test_00_account_creation(self, num_worker_threads=32, pwr=5):
+        self.create_accounts_parallel(int(self.num_accounts/2), pwr, num_worker_threads=num_worker_threads)
         err_dict = self.verify_account_creation(pwr)
         if len(err_dict):
             print(err_dict)
             return False
         return True
 
-    def create_accounts_parallel(self, powr=5, num_worker_threads=8):
-        r1_size = 30
+    def create_accounts_parallel(self, r1_size, powr=5, num_worker_threads=8):
         d_id = 0
         base_balance = 1000  # in milli-lgs
         send_amt = int(base_balance * (3 ** 10))

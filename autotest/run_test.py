@@ -40,6 +40,7 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         self.num_delegates = num_delegates
         self.delegates = {i: self.nodes[i] for i in range(self.num_delegates)}  # delegates currently in office
         self.cluster = cluster_arg
+        self.num_accounts = 60
 
         # Preload accounts, create if file not present
         with open(os.path.join(os.path.dirname(os.path.realpath(__file__)),
@@ -217,5 +218,6 @@ if __name__ == '__main__':
     test_case = TestRequests(cluster)
     while not test_case.is_cluster_initialized():
         sleep(2)
-    
+        
     test_case.run()
+    

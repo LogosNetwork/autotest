@@ -362,3 +362,10 @@ def get_cluster_asg_name(cluster_name):
 
 def ec2ids_from_resp(resp):
     return [ins['InstanceId'] for res in resp['Reservations'] for ins in res['Instances']]
+
+def run_db_get(cluster_name, dbname, key, client=None):
+    commands = [
+        'cd {}/../db-tests'.format(BENCH_DIR),
+        'python get_from_db.py {}/LogosTest/data.ldb {} {}'.format(BENCH_DIR, dbname, key)
+    ]
+    return execute_command_on_cluster(cluster_name, commands, client)

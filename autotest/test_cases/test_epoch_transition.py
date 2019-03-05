@@ -18,7 +18,7 @@ class DelegateTypes(Enum):
 
 class TestCaseMixin:
 
-    def test_epoch_transition(self, num_worker_threads=32):
+    def test_07_epoch_transition(self, num_worker_threads=32):
         """
         Signals the cluster to start epoch transition, then listens to epoch events [connect (C)|transition start (ETS)|
         epoch start (ES)|transition end(ETE)] and at each event occurrence send one transaction to a delegate from

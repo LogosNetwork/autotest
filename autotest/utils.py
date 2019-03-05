@@ -92,7 +92,7 @@ class LogosRpc:
         return self.call('process', block=block)
 
     def microblock_test(self):
-        self.call('block_create_test')
+        #self.call('block_create_test')
         return self.call('generate_microblock')
 
     def epoch_test(self):
