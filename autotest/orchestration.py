@@ -217,13 +217,14 @@ def gen_start_logos_command(command_line_options=''):
            '{} > /dev/null 2>&1 &'.format(command_line_options)
 
 
-def update_config(cluster_name, config_id, command_line_options='', new_generator=False, clear_db=True, callback=False,
+def update_config(cluster_name, config_id='', command_line_options='', new_generator=False, clear_db=True, callback=False,
                   callback_args=None, client=None):
     """
 
     Args:
         cluster_name (:obj:`str`): AWS Cloudformation cluster name
-        config_id (:obj:`str`): identifier of config template on S3 bucket
+        config_id (:obj:`str`): identifier of config template on S3 bucket.
+            same config template will be used if this field is not provided
         command_line_options (:obj:`str`): additional command line options for starting logos_core
             (other than --daemon --data_path /home/ubuntu/bench/LogosTest)
         new_generator (bool): whether to download latest gen_config.py
@@ -252,10 +253,13 @@ def update_config(cluster_name, config_id, command_line_options='', new_generato
         'kill -9 $(pgrep logos_core)',
         'aws s3 cp s3://logos-bench-{}/helpers/gen_config.py {}/gen_config.py'.format(REGION, BENCH_DIR)
         if new_generator else '',
-        'aws s3 cp s3://logos-bench-{region}/configs/{conf_id}/bench.json.tmpl {bench_dir}/config/bench.json.tmpl && '
-        'python {bench_dir}/gen_config.py{callback} && cp {bench_dir}/config/bench.json {data_path}/config.json'.format(
+        'aws s3 cp s3://logos-bench-{region}/configs/{conf_id}/bench.json.tmpl {bench_dir}/config/bench.json.tmpl'
+            .format(
             region=REGION,
             conf_id=config_id,
+            bench_dir=BENCH_DIR,
+        ) if config_id else '',
+        'python {bench_dir}/gen_config.py{callback} && cp {bench_dir}/config/bench.json {data_path}/config.json'.format(
             bench_dir=BENCH_DIR,
             callback=callback_str,
             data_path=DATA_PATH
