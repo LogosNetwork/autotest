@@ -166,11 +166,6 @@ class TestCaseMixin:
         """
         assert(all(LogosRpc.is_valid_hash(h) for h in hashes))
 
-        def batch(iterable, n=1):
-            length = len(iterable)
-            for idx in range(0, length, n):
-                yield iterable[idx:min(idx + n, length)]
-
         def check_hash_persistence(hashes_to_check):
             # for i in range(self.num_nodes):
             for i in range(self.num_delegates):

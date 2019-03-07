@@ -3,6 +3,8 @@ from time import sleep
 
 import boto3
 
+from utils import batch
+
 REGION = 'us-east-1'
 BENCH_DIR = '/home/ubuntu/bench'
 DATA_PATH = '{}/LogosTest'.format(BENCH_DIR)
@@ -297,15 +299,16 @@ def stop_cluster_instances(cluster_name):
         ScalingProcesses=['Launch'],
     )
 
-    # 2. protect instances from scale in
+    # 2. detach instances from autoscaling group (reduce desired number of instances of asg)
     ec2_client = boto3.client('ec2', region_name=REGION)
     ids_to_stop = get_cluster_instance_ids_by_state(cluster_name, 'running', ec2_client)
 
-    _ = asc_client.set_instance_protection(
-        InstanceIds=ids_to_stop,
-        AutoScalingGroupName=asg_name,
-        ProtectedFromScaleIn=True
-    )
+    for ids_batch in batch(ids_to_stop, 20):
+        _ = asc_client.detach_instances(
+            InstanceIds=ids_batch,
+            AutoScalingGroupName=asg_name,
+            ShouldDecrementDesiredCapacity=True,
+        )
 
     # 3. stop instances
     _ = ec2_client.stop_instances(InstanceIds=ids_to_stop)
@@ -319,20 +322,26 @@ def start_cluster_instances(cluster_name):
 
     _ = ec2_client.start_instances(InstanceIds=ids_to_start)
 
-    # 2. disable protection from scale in
+    # 2. resume ASG auto launch
     asg_name = get_cluster_asg_name(cluster_name)
     asc_client = boto3.client('autoscaling', region_name=REGION)
-    _ = asc_client.set_instance_protection(
-        InstanceIds=ids_to_start,
-        AutoScalingGroupName=asg_name,
-        ProtectedFromScaleIn=False
-    )
-
-    # 3. resume ASG auto launch
     _ = asc_client.resume_processes(
         AutoScalingGroupName=asg_name,
         ScalingProcesses=['Launch'],
     )
+
+    # 3. wait till instances are running, attach instances back to autoscaling group
+    while True:
+        pending_ids = get_cluster_instance_ids_by_state(cluster_name, 'pending', ec2_client)
+        if not pending_ids:
+            break
+        sleep(2)
+
+    for ids_batch in batch(ids_to_start, 20):
+        _ = asc_client.attach_instances(
+            InstanceIds=ids_batch,
+            AutoScalingGroupName=asg_name
+        )
 
 
 def get_cluster_instance_ids_by_state(cluster_name, state_name='running', ec2_client=None):

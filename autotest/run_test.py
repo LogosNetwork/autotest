@@ -1,9 +1,9 @@
 import pickle
 import re
 
+from utils import *
 from orchestration import *
 import test_cases
-from utils import *
 
 WIDTH = 80
 

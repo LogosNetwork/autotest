@@ -296,3 +296,8 @@ def pprint_log_lines(all_lines):
         print('NODE {}:'.format(i))
         for line in lines.split('\n'):
             print(line.replace('\\\\', '\\'))
+
+def batch(iterable, n=1):
+    length = len(iterable)
+    for idx in range(0, length, n):
+        yield iterable[idx:min(idx + n, length)]
