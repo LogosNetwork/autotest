@@ -78,7 +78,7 @@ class LogosRpc:
     def block_create(self, amount, destination, previous, key=g_prv, representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS):
         return self.call(
             'block_create',
-            type='state',
+            type='send',
             key=key,
             amount=amount,
             representative=representative,
@@ -88,8 +88,8 @@ class LogosRpc:
             work='{0}'.format(random.randint(0, 1000000000))
         )
 
-    def process(self, block):
-        return self.call('process', block=block)
+    def process(self, request):
+        return self.call('process', request=request)
 
     def microblock_test(self):
         #self.call('block_create_test')
@@ -113,19 +113,19 @@ class LogosRpc:
         return self.call('blocks', hashes=block_hashes)
 
     def _consensus_blocks(self, type_name, hashes):
-        assert type_name in ['batch_blocks', 'micro_blocks', 'epochs']
+        assert type_name in ['request_blocks', 'micro_blocks', 'epochs']
         assert isinstance(hashes, list) and all(self.is_valid_hash(h) for h in hashes)
         return self.call(type_name, hashes=hashes)
 
-    def batch_blocks(self, hashes):
-        return self._consensus_blocks('batch_blocks', hashes)
+    def request_blocks(self, hashes):
+        return self._consensus_blocks('request_blocks', hashes)
 
-    def batch_blocks_latest(self, delegate_id='0', count='100', head=''):
+    def request_blocks_latest(self, delegate_id='0', count='100', head=''):
         call_dict = {'delegate_id': delegate_id, 'count': count}
         if head:
             assert self.is_valid_hash(head)
             call_dict['head'] = head
-        return self.call('batch_blocks_latest', **call_dict)
+        return self.call('request_blocks_latest', **call_dict)
 
     def micro_blocks(self, hashes):
         return self._consensus_blocks('micro_blocks', hashes)
@@ -296,6 +296,7 @@ def pprint_log_lines(all_lines):
         print('NODE {}:'.format(i))
         for line in lines.split('\n'):
             print(line.replace('\\\\', '\\'))
+
 
 def batch(iterable, n=1):
     length = len(iterable)

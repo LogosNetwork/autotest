@@ -74,7 +74,9 @@ class TestCaseMixin:
 
         for j in range(sender_size):
             q.put((j, d_ids[j], request_data_list[j]))
-        _ = self.process_request_queue(q, num_worker_threads)
+        resps = self.process_request_queue(q, num_worker_threads)
+        if resps:
+            print(resps)
 
         t1 = time()
         requests_to_check = [request_data['hash'] for request_data in request_data_list]
@@ -182,6 +184,6 @@ class TestCaseMixin:
                 return True
             sleep(1)
             retries += 1
-            if retries > max_retries and time() - t0 > 90:
+            if retries > max_retries or time() - t0 > 30:
                 print(self.delegates[0].blocks(hashes))
                 return False

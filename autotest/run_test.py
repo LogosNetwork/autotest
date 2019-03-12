@@ -128,7 +128,7 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
             command = '\n'.join([
                 'sudo kill -9 $(pgrep logos_core)',
                 'sudo rm -f {}'.format(files_to_rm),
-                'sleep 20 && sudo ' + gen_start_logos_command(command_line_options),
+                'sleep 30 && sudo ' + gen_start_logos_command(command_line_options),
             ])
             command_list.append(command)
         _ = self.log_handler.execute_parallel_command(command_list, background=True)
@@ -174,12 +174,12 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
     def get_stored_request_count(self, node_id=None):
         # TODO: change grep pattern once Devon code is merged, same as below
         all_lines = self.log_handler.collect_lines(
-            'grep -r "Batch.*Stored" {}* | tail -n1'.format(self.log_handler.LOG_DIR),
+            'grep -r "Request.*Stored" {}* | tail -n1'.format(self.log_handler.LOG_DIR),
             node_id
         )
 
         def stored_count_from_line(line):
-            pat = 'ConsensusManager<BatchStateBlock> - Stored '
+            pat = 'ConsensusManager<RequestBlock> - Stored '
             m = re.search('{}([0-9]+)'.format(pat), line)
             return int(m.group(1)) if m is not None else 0
 
@@ -187,7 +187,7 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
 
     def get_stored_request_block_count(self, node_id=None):
         all_lines = self.log_handler.collect_lines(
-            'grep -r "Batch.*Stored" {}* | wc -l'.format(self.log_handler.LOG_DIR),
+            'grep -r "Request.*Stored" {}* | wc -l'.format(self.log_handler.LOG_DIR),
             node_id
         )
 
