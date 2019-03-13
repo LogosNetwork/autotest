@@ -193,6 +193,13 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
 
         return sum(int(line) if line else 0 for line in all_lines)
 
+    def get_respondents(self, node_id, block_hash, message_type='Prepare', direct=True):
+        pattern = 'Received {}.* {} via direct connection {}'.format(
+            message_type, block_hash, 'true' if direct else 'false'
+        )
+        lines = self.log_handler.grep_lines(pattern, node_id)[0].split('\n')
+        return [int(re.search('from delegate: ([0-9]+)', line).group(1)) for line in lines]
+
     @staticmethod
     def print_test_name(name):
         length = len(name)

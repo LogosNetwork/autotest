@@ -173,7 +173,7 @@ def restart_logos(cluster_name, command_line_options='', clear_db=True, client=N
     return execute_command_on_cluster(cluster_name, commands, client)
 
 
-def update_logos(cluster_name, logos_id, command_line_options='', clear_db=True, client=None):
+def update_logos(cluster_name, logos_id, command_line_options='', restart=False, clear_db=True, client=None):
     """
     Updates logos_core binary and restarts it on remote cluster
 
@@ -182,6 +182,7 @@ def update_logos(cluster_name, logos_id, command_line_options='', clear_db=True,
         logos_id (:obj:`str`): identifier of logos binary on S3 bucket
         command_line_options (:obj:`str`): additional command line options for starting logos_core
             (other than --daemon --data_path /home/ubuntu/bench/LogosTest)
+        restart (bool): whether to restart software
         clear_db (bool): whether to wipe database on cluster
         client: a boto3 ssm client
 
@@ -195,7 +196,7 @@ def update_logos(cluster_name, logos_id, command_line_options='', clear_db=True,
         'aws s3 cp s3://logos-bench-{}/binaries/{}/logos_core {}/logos_core'.format(REGION, logos_id, BENCH_DIR),
         'chmod a+x {}/logos_core'.format(BENCH_DIR),
         'rm -f {}'.format(files_to_rm),
-        'sleep 20 && ' + gen_start_logos_command(command_line_options)
+        ('sleep 20 && ' + gen_start_logos_command(command_line_options))if restart else ''
     ]
     return execute_command_on_cluster(cluster_name, commands, client)
 
@@ -217,8 +218,8 @@ def gen_start_logos_command(command_line_options=''):
            '{} > /dev/null 2>&1 &'.format(command_line_options)
 
 
-def update_config(cluster_name, config_id='', command_line_options='', new_generator=False, clear_db=True, callback=False,
-                  callback_args=None, client=None):
+def update_config(cluster_name, config_id='', command_line_options='', restart=False, new_generator=False,
+                  clear_db=True, callback=False, callback_args=None, client=None):
     """
 
     Args:
@@ -227,6 +228,7 @@ def update_config(cluster_name, config_id='', command_line_options='', new_gener
             same config template will be used if this field is not provided
         command_line_options (:obj:`str`): additional command line options for starting logos_core
             (other than --daemon --data_path /home/ubuntu/bench/LogosTest)
+        restart (bool): whether to restart software
         new_generator (bool): whether to download latest gen_config.py
         clear_db (bool): whether to wipe database on cluster
         callback (bool): whether to use default callback webhook setup on node 0
@@ -265,7 +267,7 @@ def update_config(cluster_name, config_id='', command_line_options='', new_gener
             data_path=DATA_PATH
         ),
         'rm -f {}'.format(files_to_rm),
-        'sleep 20 && ' + gen_start_logos_command(command_line_options)
+        ('sleep 20 && ' + gen_start_logos_command(command_line_options)) if restart else ''
     ]
     return execute_command_on_cluster(cluster_name, commands, client)
 
