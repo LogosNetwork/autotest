@@ -77,12 +77,13 @@ class LogosRpc:
     def key_expand(self, key):
         return self.call('key_expand', key=key)
 
-    def block_create(self, amount, destination, previous, type="send",key=g_prv, representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS, votes=[],bls_key=''):
+    def block_create(self, amount, destination, previous, type="send",key=g_prv, representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS, votes=[], transactions=[],bls_key=''):
         return self.call(
             'block_create',
             type=type,
             private_key=key,
             amount=amount,
+            transactions=transactions,
             representative=representative,
             previous=previous,
             next=previous,
