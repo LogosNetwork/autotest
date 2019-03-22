@@ -2,6 +2,7 @@ import os
 import paramiko
 from queue import Queue, Empty
 import random
+import re
 import requests
 import sys
 import threading
@@ -49,7 +50,7 @@ class LogosRpc:
 
     # main class function for invoking RPC calls
     def call(self, action, **kwargs):
-        message = {'action': action, **kwargs}
+        message = {'rpc_action': action, **kwargs}
         resp = requests.post(self.uri, json=message, headers={'Content-Type': 'application/json'})
         res = resp.json()
         if 'error' in res:
@@ -75,17 +76,23 @@ class LogosRpc:
     def key_expand(self, key):
         return self.call('key_expand', key=key)
 
-    def block_create(self, amount, destination, previous, key=g_prv, representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS):
+    def block_create(self, amount, destination, previous, private_key=g_prv, representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS):
+        transactions = [
+            {
+                'destination': destination,
+                'amount': amount
+            }
+        ]
+
         return self.call(
             'block_create',
             type='send',
-            key=key,
-            amount=amount,
+            private_key=private_key,
             representative=representative,
-            link=destination,
             previous=previous,
-            transaction_fee=str(fee_mlgs) + '0' * MLGS_DEC,
-            work='{0}'.format(random.randint(0, 1000000000))
+            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            transactions=transactions,
+            work='{0}'.format(random.randint(0, 1000000000)),
         )
 
     def process(self, request):
@@ -166,12 +173,12 @@ class LogosRpc:
                 amount=amount,
                 destination=dest_addr,
                 previous=prev,
-                key=source_key,
+                private_key=source_key,
                 fee_mlgs=fee_mlgs
             )
             blocks_to_process.append(create_data)
             prev = create_data['hash']
-        process_dataset = [self.process(block_to_process['block']) for block_to_process in blocks_to_process]
+        process_dataset = [self.process(block_to_process['request']) for block_to_process in blocks_to_process]
         return process_dataset
 
 
@@ -296,6 +303,11 @@ def pprint_log_lines(all_lines):
         print('NODE {}:'.format(i))
         for line in lines.split('\n'):
             print(line.replace('\\\\', '\\'))
+
+
+def parse_log_line(line):
+    m = re.search(r'\[(.* .*) (.*) (.*)\]: (.*)', line)
+    return m.groups()
 
 
 def batch(iterable, n=1):

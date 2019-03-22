@@ -314,12 +314,9 @@
         "GroupDescription": "Allow 22, 80, and 55000 (for RPC) for all, and 60000 only for inter-delegate communication",
         "SecurityGroupIngress": [
           { "IpProtocol": "tcp", "FromPort": "55000", "ToPort": "55000", "CidrIp": "0.0.0.0/0"},
-          { "IpProtocol": "tcp", "FromPort": "55000", "ToPort": "55000", "CidrIpv6": "::/0" },
           { "IpProtocol": "tcp", "FromPort": "22", "ToPort": "22", "CidrIp": { "Ref": "SSHLocation" } },
           { "IpProtocol": "tcp", "FromPort": "80", "ToPort": "80", "CidrIp": "0.0.0.0/0"},
-          { "IpProtocol": "tcp", "FromPort": "80", "ToPort": "80", "CidrIpv6": "::/0" },
-          { "IpProtocol": "tcp", "FromPort": "14495", "ToPort": "14495", "CidrIp": "0.0.0.0/0"},
-          { "IpProtocol": "tcp", "FromPort": "14495", "ToPort": "14495", "CidrIpv6": "::/0" }
+          { "IpProtocol": "tcp", "FromPort": "14495", "ToPort": "14495", "CidrIp": "0.0.0.0/0"}
         ]
       }
     },

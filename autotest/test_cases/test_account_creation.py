@@ -21,7 +21,7 @@ class TestCaseMixin:
         for i in range(r1_size):
             account = self.accounts[i]
             d_id, request_data = self.create_next_genesis_txn(account['account'], d_id, 2000000000000)
-            self.delegates[d_id].process(request_data['block'])
+            self.delegates[d_id].process(request_data['request'])
             d_id = designated_delegate(g_pub, request_data['hash'])
             if not self.wait_for_requests_persistence([request_data['hash']]):
                 sys.stderr.write('Creation stopped at index {}, account {}'.format(i, account['account']))
@@ -108,7 +108,7 @@ class TestCaseMixin:
                 except Empty:
                     break
                 try:
-                    resps[j] = self.nodes[d_id].process(request_data['block'])
+                    resps[j] = self.nodes[d_id].process(request_data['request'])
                 except LogosRPCError as e:
                     sys.stderr.write('Error at index {}!\n'.format(j))
                     resps[j] = e.__dict__
@@ -144,7 +144,7 @@ class TestCaseMixin:
             amount=amount,
             destination=destination,
             previous=prev,
-            key=sender_prv,
+            private_key=sender_prv,
             fee_mlgs=MIN_FEE_MLGS
         )
         return designated_id, create_data
