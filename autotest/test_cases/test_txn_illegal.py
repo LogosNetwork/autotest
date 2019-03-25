@@ -17,9 +17,11 @@ class TestCaseMixin:
                     self.accounts[j]['account'],
                     self.accounts[j]['public'],
                     self.accounts[j]['private'],
-                    self.accounts[random.randrange(0, sender_size)],
+                    [{
+                        'destination': self.accounts[random.randrange(0, sender_size)],
+                        'amount': invalid_amt
+                    }],
                     d_ids[j],
-                    invalid_amt
                 )
             except LogosRPCError:
                 errors += 1

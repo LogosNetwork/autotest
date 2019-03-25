@@ -35,9 +35,11 @@ class TestCaseMixin:
             src_accounts[j]['account'],
             src_accounts[j]['public'],
             src_accounts[j]['private'],
-            dest_accounts[j]['account'],
+            [{
+                'destination': dest_accounts[j]['account'],
+                'amount': send_amt
+            }],
             d_ids[j],
-            send_amt
         ) for j in range(sender_size)])
 
         # construct queue

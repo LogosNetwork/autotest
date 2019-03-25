@@ -76,14 +76,7 @@ class LogosRpc:
     def key_expand(self, key):
         return self.call('key_expand', key=key)
 
-    def block_create(self, amount, destination, previous, private_key=g_prv, representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS):
-        transactions = [
-            {
-                'destination': destination,
-                'amount': amount
-            }
-        ]
-
+    def block_create(self, txns, previous, private_key=g_prv, representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS):
         return self.call(
             'block_create',
             type='send',
@@ -91,7 +84,7 @@ class LogosRpc:
             representative=representative,
             previous=previous,
             fee=str(fee_mlgs) + '0' * MLGS_DEC,
-            transactions=transactions,
+            transactions=txns,
             work='{0}'.format(random.randint(0, 1000000000)),
         )
 
@@ -170,8 +163,10 @@ class LogosRpc:
                 txns = [str(amt_mlgs) + '0' * MLGS_DEC for _ in range(count)]
         for amount in txns:
             create_data = self.block_create(
-                amount=amount,
-                destination=dest_addr,
+                txns=[{
+                    'amount': amount,
+                    'destination': dest_addr
+                }],
                 previous=prev,
                 private_key=source_key,
                 fee_mlgs=fee_mlgs

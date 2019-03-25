@@ -40,7 +40,7 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         self.num_delegates = num_delegates
         self.reset_delegates()
         self.cluster = cluster_arg
-        self.num_accounts = 60
+        self.num_accounts = 6
 
         # Preload accounts, create if file not present
         with open(os.path.join(os.path.dirname(os.path.realpath(__file__)),

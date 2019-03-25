@@ -113,9 +113,11 @@ class TestCaseMixin:
                         accounts_to_send_from[j]['account'],
                         accounts_to_send_from[j]['public'],
                         accounts_to_send_from[j]['private'],
-                        g_account,
-                        d_id,
-                        1
+                        [{
+                            'destination': g_account,
+                            'amount': 1
+                        }],
+                        d_id
                     ) for j, d_id in enumerate(d_ids)])
                     assert set(d_ids) == set(t_d_ids), '{} != {} !!!'.format(d_ids, t_d_ids)  # sanity check, to be removed
 
