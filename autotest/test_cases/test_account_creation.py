@@ -95,6 +95,7 @@ class TestCaseMixin:
 
         t1 = time()
         requests_to_check = [request_data['hash'] for request_data in request_data_list]
+        print('Time to construct check list: {:.6f}s'.format(time() - t1))
         if not self.wait_for_requests_persistence(requests_to_check):
             return False
         print('Time to wait for persistence: {:.6f}s'.format(time() - t1))
@@ -196,7 +197,7 @@ class TestCaseMixin:
                 return True
             sleep(1)
             retries += 1
-            if retries > max_retries or time() - t0 > 30:
+            if retries > max_retries or time() - t0 > int(hashes / 600):
                 print(self.delegates[0].blocks(hashes))
                 return False
 

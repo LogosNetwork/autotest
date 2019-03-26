@@ -13,7 +13,7 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
     Cluster-agnostic test class
     """
 
-    def __init__(self, cluster_arg, num_delegates=32):
+    def __init__(self, cluster_arg, num_delegates=32, disable_transition=False):
         """
 
         Args:
@@ -27,6 +27,8 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         else:
             raise RuntimeError('Unsupported cluster arg type')
         self.ips = (get_remote_cluster_ips if self.remote else get_local_cluster_ips)(cluster_arg)
+        if disable_transition:
+            self.ips = {k: v for k, v in self.ips.items() if k < num_delegates}
         # reverse mapping of ip to global index
         self.ip_pub_to_i, self.ip_prv_to_i = {}, {}
         for k, v in self.ips.items():
@@ -121,10 +123,15 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         files_to_rm = get_files_to_remove(clear_db)
         command_list = []
         for i, ip_dict in self.ips.items():
-            command_line_options = '--bind {} --debug net '.format(ip_dict['PrivateIpAddress']) + \
-                                   ' '.join(['--addnode {}'.format(
-                                       self.ips[(i + inc) % self.num_nodes]['PublicIpAddress']
-                                   ) for inc in [1, 4, 16]])
+
+            # disable p2p and epoch transition if num nodes is the same as numdelegates
+            if self.num_delegates == self.num_nodes:
+                command_line_options = ''
+            else:
+                command_line_options = '--bind {} --debug net '.format(ip_dict['PrivateIpAddress']) + \
+                                       ' '.join(['--addnode {}'.format(
+                                           self.ips[(i + inc) % self.num_nodes]['PublicIpAddress']
+                                       ) for inc in [1, 4, 16]])
             command = '\n'.join([
                 'sudo kill -9 $(pgrep logos_core)',
                 'sudo rm -f {}'.format(files_to_rm),
@@ -132,8 +139,6 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
             ])
             command_list.append(command)
         _ = self.log_handler.execute_parallel_command(command_list, background=True)
-        # print('Succeeded on {} out of {} nodes'.format(sum(1 - bool(int(line)) for line in all_lines), self.num_nodes))
-        # TODO: check if process actually runs
         self.reset_delegates()
 
     def reset_delegates(self):

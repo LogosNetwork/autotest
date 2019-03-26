@@ -219,7 +219,7 @@ def gen_start_logos_command(command_line_options=''):
 
 
 def update_config(cluster_name, config_id='', command_line_options='', restart=False, new_generator=False,
-                  clear_db=True, callback=False, callback_args=None, client=None):
+                  clear_db=True, callback=False, callback_args=None, disable_transition=False, client=None):
     """
 
     Args:
@@ -233,6 +233,7 @@ def update_config(cluster_name, config_id='', command_line_options='', restart=F
         clear_db (bool): whether to wipe database on cluster
         callback (bool): whether to use default callback webhook setup on node 0
         callback_args (dict): dict specifying 'callback_address', 'callback_port', and/or 'callback_target'
+        disable_transition (bool): whether to disable epoch transition and only use num_delegate nodes
         client: a boto3 ssm client
 
     Returns:
@@ -261,9 +262,10 @@ def update_config(cluster_name, config_id='', command_line_options='', restart=F
             conf_id=config_id,
             bench_dir=BENCH_DIR,
         ) if config_id else '',
-        'python {bench_dir}/gen_config.py{callback} && cp {bench_dir}/config/bench.json {data_path}/config.json'.format(
+        'python {bench_dir}/gen_config.py{callback}{dt} && cp {bench_dir}/config/bench.json {data_path}/config.json'.format(
             bench_dir=BENCH_DIR,
             callback=callback_str,
+            dt=' --disable_transition' if disable_transition else '',
             data_path=DATA_PATH
         ),
         'rm -f {}'.format(files_to_rm),
@@ -324,7 +326,18 @@ def start_cluster_instances(cluster_name):
 
     # 1. start instances
     ec2_client = boto3.client('ec2', region_name=REGION)
-    ids_to_start = get_cluster_instance_ids_by_state(cluster_name, 'stopped', ec2_client)
+
+    all_ids = get_cluster_instance_ids_by_state(cluster_name, '', ec2_client)
+    counter = 0
+    while True:
+        ids_to_start = get_cluster_instance_ids_by_state(cluster_name, 'stopped', ec2_client)
+        if len(ids_to_start) < len(all_ids):
+            print(' ' * 60 + '\r' + 'Waiting for all instances to stop first{}\r'.format('.' * counter))
+            counter = counter % 3 + 1
+            sleep(5)
+        else:
+            print('\n')
+            break
 
     _ = ec2_client.start_instances(InstanceIds=ids_to_start)
 
@@ -355,13 +368,16 @@ def get_cluster_instance_ids_by_state(cluster_name, state_name='running', ec2_cl
         ec2_client = boto3.client('ec2', region_name=REGION)
     filters = [
         {
-            'Name': 'instance-state-name',
-            'Values': [state_name]
-        }, {
             'Name': 'tag:aws:cloudformation:stack-name',
             'Values': [cluster_name]
         }
     ]
+
+    if state_name:
+        filters.append({
+            'Name': 'instance-state-name',
+            'Values': [state_name]
+        })
 
     resp = ec2_client.describe_instances(Filters=filters)
     ids = ec2ids_from_resp(resp)
