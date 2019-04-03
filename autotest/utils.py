@@ -8,6 +8,9 @@ import sys
 import threading
 from time import sleep, time
 
+RPC_PORT = 55000
+TXA_JSON_PORT = 56001
+
 g_account = 'lgs_3e3j5tkog48pnny9dmfzj1r16pg8t1e76dz5tmac6iq689wyjfpiij4txtdo'
 g_prv = '34F0A37AAD20F4A260F0A5B3CB3D7FB50673212263E58A380BC10474BB039CE4'
 g_pub = 'B0311EA55708D6A53C75CDBF88300259C6D018522FE3D4D0A242E431F9E8B6D0'
@@ -36,13 +39,15 @@ class LogosRPCError(Exception):
 
 
 class LogosRpc:
-    def __init__(self, ip='', port='55000'):
+    def __init__(self, ip='', port=RPC_PORT, txa_json_port=TXA_JSON_PORT):
         if ip.find(':') > 0:
             self.ip, self.port = ip.split(':')
         else:
             self.ip = ip
             self.port = port
+        self.txa_json_port = txa_json_port
         self.uri = 'http://{}:{}'.format(self.ip, self.port)
+        self.txa_json_uri = 'http://{}:{}'.format(self.ip, self.txa_json_port)
 
     @staticmethod
     def is_valid_hash(h):
@@ -51,7 +56,8 @@ class LogosRpc:
     # main class function for invoking RPC calls
     def call(self, action, **kwargs):
         message = {'rpc_action': action, **kwargs}
-        resp = requests.post(self.uri, json=message, headers={'Content-Type': 'application/json'})
+        uri = self.txa_json_uri if action == 'process' else self.uri
+        resp = requests.post(uri, json=message, headers={'Content-Type': 'application/json'})
         res = resp.json()
         if 'error' in res:
             raise LogosRPCError(self.uri, message, res['error'])
@@ -69,6 +75,9 @@ class LogosRpc:
             assert self.is_valid_hash(head)
             msg['head'] = head
         return self.call('account_history', **msg)
+
+    def accounts_exist(self, accounts):
+        return self.call('accounts_exist', accounts=accounts)
 
     def key_create(self):
         return self.call('key_create')
@@ -111,6 +120,10 @@ class LogosRpc:
     def blocks(self, block_hashes):
         assert (all(self.is_valid_hash(block_hash) for block_hash in block_hashes))
         return self.call('blocks', hashes=block_hashes)
+
+    def blocks_exist(self, block_hashes):
+        assert (all(self.is_valid_hash(block_hash) for block_hash in block_hashes))
+        return self.call('blocks_exist', hashes=block_hashes)
 
     def _consensus_blocks(self, type_name, hashes):
         assert type_name in ['request_blocks', 'micro_blocks', 'epochs']

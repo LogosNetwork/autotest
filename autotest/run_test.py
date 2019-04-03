@@ -110,11 +110,12 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
     """
     Helper functions
     """
-    def restart_logos_p2p(self, clear_db=True):
+    def restart_logos_p2p(self, sleep=20, clear_db=True):
         """
         Restarts logos_core in p2p mode on remote cluster
 
         Args:
+            sleep (int): sleep time before restarting software
             clear_db (bool): whether to wipe database on cluster
 
         Returns:
@@ -135,7 +136,7 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
             command = '\n'.join([
                 'sudo kill -9 $(pgrep logos_core)',
                 'sudo rm -f {}'.format(files_to_rm),
-                'sleep 30 && sudo ' + gen_start_logos_command(command_line_options),
+                'sleep {} && sudo '.format(sleep) + gen_start_logos_command(command_line_options),
             ])
             command_list.append(command)
         _ = self.log_handler.execute_parallel_command(command_list, background=True)

@@ -11,11 +11,7 @@ class TestCaseMixin:
     def test_00_account_creation(self, pwr=PWR, txn_size=MAX_TXN, num_worker_threads=N_WORKERS):
         r1_size = int(self.num_accounts / 2)
         self.create_accounts_parallel(r1_size, pwr, txn_size, num_worker_threads=num_worker_threads)
-        err_dict = self.verify_account_creation(r1_size, txn_size, pwr)
-        if len(err_dict):
-            print(err_dict)
-            return False
-        return True
+        return self.verify_account_creation(r1_size, txn_size, pwr)
 
     def create_accounts_parallel(self, r1_size, powr=PWR, txn_size=MAX_TXN, num_worker_threads=N_WORKERS):
         d_id = 0
@@ -54,14 +50,11 @@ class TestCaseMixin:
 
     def verify_account_creation(self, r1_size, txn_size=MAX_TXN, powr=PWR):
         print('Verifying all accounts just got created...')
-        err_dict = {}
-        for i in tqdm(range((r1_size * txn_size) * ((txn_size + 1) ** powr))):
-            account = self.accounts[i]['account']
-            try:
-                self.update_account_frontier(account_addr=account)
-            except LogosRPCError as e:
-                err_dict[i] = e.__dict__
-        return err_dict
+        num_to_check = (r1_size * txn_size) * ((txn_size + 1) ** powr)
+        for account_slice in tqdm(batch(self.account_list[:num_to_check], 2000)):
+            if self.delegates[0].accounts_exist([account['account'] for account in account_slice])['exist'] != '1':
+                return False
+        return True
 
     def update_account_frontier(self, account_addr):
         info = self.delegates[0].account_info(account_addr)
@@ -165,7 +158,7 @@ class TestCaseMixin:
     def create_next_genesis_txn(self, txns, designated_id=0):
         return self.create_next_txn(g_account, g_pub, g_prv, txns, designated_id)
 
-    def wait_for_requests_persistence(self, hashes, max_batch=2000, max_retries=30):
+    def wait_for_requests_persistence(self, hashes, max_batch=2000, max_retries=60):
         """
         Checks if given request hashes are persisted
         (This can be used to check if recipient accounts are created,
@@ -185,8 +178,11 @@ class TestCaseMixin:
             # for i in range(self.num_nodes):
             for i in range(self.num_delegates):
                 try:
-                    self.delegates[i].blocks(hashes_to_check)
+                    exist = self.delegates[i].blocks_exist(hashes_to_check)
                 except LogosRPCError:
+                    return False
+                assert exist['exist'] in ['0', '1']
+                if exist['exist'] == '0':
                     return False
             return True
 
@@ -197,7 +193,7 @@ class TestCaseMixin:
                 return True
             sleep(1)
             retries += 1
-            if retries > max_retries or time() - t0 > int(len(hashes) / 600 + 10):
+            if retries > max_retries or time() - t0 > int(len(hashes) / 600 + 30):
                 print(self.delegates[0].blocks(hashes))
                 return False
 
