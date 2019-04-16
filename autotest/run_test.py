@@ -146,7 +146,7 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         self.delegates = {i: self.nodes[i] for i in range(self.num_delegates)}  # delegates currently in office
 
     def is_cluster_initialized(self, from_all=False):
-        if not self.is_cluster_running(None if from_all else 0, verbose=False):
+        if not self.is_cluster_running(None if from_all else 0, verbose=0):
             return False
 
         pattern = 'Received Post_Commit'
@@ -162,17 +162,17 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
                 print('Received {} out of {} Post_Commit messages'.format(post_commit_count, self.num_delegates - 1))
                 return False
 
-    def is_cluster_running(self, node_id=None, verbose=True):
+    def is_cluster_running(self, node_id=None, verbose=0):
         pids = self.log_handler.collect_lines('pgrep logos_core', node_id)
         running = True
         for i, pid in enumerate(pids):
             if not pid:
-                if verbose:
+                if verbose > 0:
                     print('Node {} with ip {} is not running logos_core'.format(i, self.ips[i]))
                 running = False
         err_lines = self.log_handler.grep_lines('(error|fatal)]', node_id)
         for i, err_line in enumerate(err_lines):
-            if err_line:
+            if err_line and verbose > 1:
                 print('Node {} with ip {} reported the following error: {}\n'.format(i, self.ips[i], err_line))
                 # running = False
         return running
