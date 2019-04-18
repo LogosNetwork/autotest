@@ -1,9 +1,9 @@
 import pickle
 import re
 
+from utils import *
 from orchestration import *
 import test_cases
-from utils import *
 
 WIDTH = 80
 
@@ -13,7 +13,7 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
     Cluster-agnostic test class
     """
 
-    def __init__(self, cluster_arg, num_delegates=32):
+    def __init__(self, cluster_arg, num_delegates=32, disable_transition=False):
         """
 
         Args:
@@ -27,6 +27,8 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         else:
             raise RuntimeError('Unsupported cluster arg type')
         self.ips = (get_remote_cluster_ips if self.remote else get_local_cluster_ips)(cluster_arg)
+        if disable_transition:
+            self.ips = {k: v for k, v in self.ips.items() if k < num_delegates}
         # reverse mapping of ip to global index
         self.ip_pub_to_i, self.ip_prv_to_i = {}, {}
         for k, v in self.ips.items():
@@ -40,7 +42,7 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         self.num_delegates = num_delegates
         self.reset_delegates()
         self.cluster = cluster_arg
-        self.num_accounts = 60
+        self.num_accounts = 6
 
         # Preload accounts, create if file not present
         with open(os.path.join(os.path.dirname(os.path.realpath(__file__)),
@@ -108,11 +110,12 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
     """
     Helper functions
     """
-    def restart_logos_p2p(self, clear_db=True):
+    def restart_logos_p2p(self, sleep=20, clear_db=True):
         """
         Restarts logos_core in p2p mode on remote cluster
 
         Args:
+            sleep (int): sleep time before restarting software
             clear_db (bool): whether to wipe database on cluster
 
         Returns:
@@ -121,26 +124,29 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         files_to_rm = get_files_to_remove(clear_db)
         command_list = []
         for i, ip_dict in self.ips.items():
-            command_line_options = '--bind {} --debug net '.format(ip_dict['PrivateIpAddress']) + \
-                                   ' '.join(['--addnode {}'.format(
-                                       self.ips[(i + inc) % self.num_nodes]['PublicIpAddress']
-                                   ) for inc in [1, 4, 16]])
+
+            # disable p2p and epoch transition if num nodes is the same as numdelegates
+            if self.num_delegates == self.num_nodes:
+                command_line_options = ''
+            else:
+                command_line_options = '--bind {} --debug net '.format(ip_dict['PrivateIpAddress']) + \
+                                       ' '.join(['--addnode {}'.format(
+                                           self.ips[(i + inc) % self.num_nodes]['PublicIpAddress']
+                                       ) for inc in [1, 4, 16]])
             command = '\n'.join([
                 'sudo kill -9 $(pgrep logos_core)',
                 'sudo rm -f {}'.format(files_to_rm),
-                'sleep 20 && sudo ' + gen_start_logos_command(command_line_options),
+                'sleep {} && sudo '.format(sleep) + gen_start_logos_command(command_line_options),
             ])
             command_list.append(command)
         _ = self.log_handler.execute_parallel_command(command_list, background=True)
-        # print('Succeeded on {} out of {} nodes'.format(sum(1 - bool(int(line)) for line in all_lines), self.num_nodes))
-        # TODO: check if process actually runs
         self.reset_delegates()
 
     def reset_delegates(self):
         self.delegates = {i: self.nodes[i] for i in range(self.num_delegates)}  # delegates currently in office
 
     def is_cluster_initialized(self, from_all=False):
-        if not self.is_cluster_running(None if from_all else 0, verbose=False):
+        if not self.is_cluster_running(None if from_all else 0, verbose=0):
             return False
 
         pattern = 'Received Post_Commit'
@@ -156,17 +162,17 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
                 print('Received {} out of {} Post_Commit messages'.format(post_commit_count, self.num_delegates - 1))
                 return False
 
-    def is_cluster_running(self, node_id=None, verbose=True):
+    def is_cluster_running(self, node_id=None, verbose=0):
         pids = self.log_handler.collect_lines('pgrep logos_core', node_id)
         running = True
         for i, pid in enumerate(pids):
             if not pid:
-                if verbose:
+                if verbose > 0:
                     print('Node {} with ip {} is not running logos_core'.format(i, self.ips[i]))
                 running = False
         err_lines = self.log_handler.grep_lines('(error|fatal)]', node_id)
         for i, err_line in enumerate(err_lines):
-            if err_line:
+            if err_line and verbose > 1:
                 print('Node {} with ip {} reported the following error: {}\n'.format(i, self.ips[i], err_line))
                 # running = False
         return running
@@ -174,12 +180,12 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
     def get_stored_request_count(self, node_id=None):
         # TODO: change grep pattern once Devon code is merged, same as below
         all_lines = self.log_handler.collect_lines(
-            'grep -r "Batch.*Stored" {}* | tail -n1'.format(self.log_handler.LOG_DIR),
+            'grep -r "Request.*Stored" {}* | tail -n1'.format(self.log_handler.LOG_DIR),
             node_id
         )
 
         def stored_count_from_line(line):
-            pat = 'ConsensusManager<BatchStateBlock> - Stored '
+            pat = 'ConsensusManager<RequestBlock> - Stored '
             m = re.search('{}([0-9]+)'.format(pat), line)
             return int(m.group(1)) if m is not None else 0
 
@@ -187,11 +193,18 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
 
     def get_stored_request_block_count(self, node_id=None):
         all_lines = self.log_handler.collect_lines(
-            'grep -r "Batch.*Stored" {}* | wc -l'.format(self.log_handler.LOG_DIR),
+            'grep -r "Request.*Stored" {}* | wc -l'.format(self.log_handler.LOG_DIR),
             node_id
         )
 
         return sum(int(line) if line else 0 for line in all_lines)
+
+    def get_respondents(self, node_id, block_hash, message_type='Prepare', direct=True):
+        pattern = 'Received {}.* {} via direct connection {}'.format(
+            message_type, block_hash, 'true' if direct else 'false'
+        )
+        lines = self.log_handler.grep_lines(pattern, node_id)[0].split('\n')
+        return [int(re.search('from delegate: ([0-9]+)', line).group(1)) for line in lines]
 
     @staticmethod
     def print_test_name(name):

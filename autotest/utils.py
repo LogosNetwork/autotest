@@ -2,10 +2,14 @@ import os
 import paramiko
 from queue import Queue, Empty
 import random
+import re
 import requests
 import sys
 import threading
 from time import sleep, time
+
+RPC_PORT = 55000
+TXA_JSON_PORT = 56001
 
 g_account = 'lgs_3e3j5tkog48pnny9dmfzj1r16pg8t1e76dz5tmac6iq689wyjfpiij4txtdo'
 g_prv = '34F0A37AAD20F4A260F0A5B3CB3D7FB50673212263E58A380BC10474BB039CE4'
@@ -35,13 +39,15 @@ class LogosRPCError(Exception):
 
 
 class LogosRpc:
-    def __init__(self, ip='', port='55000'):
+    def __init__(self, ip='', port=RPC_PORT, txa_json_port=TXA_JSON_PORT):
         if ip.find(':') > 0:
             self.ip, self.port = ip.split(':')
         else:
             self.ip = ip
             self.port = port
+        self.txa_json_port = txa_json_port
         self.uri = 'http://{}:{}'.format(self.ip, self.port)
+        self.txa_json_uri = 'http://{}:{}'.format(self.ip, self.txa_json_port)
 
     @staticmethod
     def is_valid_hash(h):
@@ -49,8 +55,9 @@ class LogosRpc:
 
     # main class function for invoking RPC calls
     def call(self, action, **kwargs):
-        message = {'action': action, **kwargs}
-        resp = requests.post(self.uri, json=message, headers={'Content-Type': 'application/json'})
+        message = {'rpc_action': action, **kwargs}
+        uri = self.txa_json_uri if action == 'process' else self.uri
+        resp = requests.post(uri, json=message, headers={'Content-Type': 'application/json'})
         res = resp.json()
         if 'error' in res:
             raise LogosRPCError(self.uri, message, res['error'])
@@ -69,27 +76,29 @@ class LogosRpc:
             msg['head'] = head
         return self.call('account_history', **msg)
 
+    def accounts_exist(self, accounts):
+        return self.call('accounts_exist', accounts=accounts)
+
     def key_create(self):
         return self.call('key_create')
 
     def key_expand(self, key):
         return self.call('key_expand', key=key)
 
-    def block_create(self, amount, destination, previous, key=g_prv, representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS):
+    def block_create(self, txns, previous, private_key=g_prv, representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS):
         return self.call(
             'block_create',
-            type='state',
-            key=key,
-            amount=amount,
+            type='send',
+            private_key=private_key,
             representative=representative,
-            link=destination,
             previous=previous,
-            transaction_fee=str(fee_mlgs) + '0' * MLGS_DEC,
-            work='{0}'.format(random.randint(0, 1000000000))
+            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            transactions=txns,
+            work='{0}'.format(random.randint(0, 1000000000)),
         )
 
-    def process(self, block):
-        return self.call('process', block=block)
+    def process(self, request):
+        return self.call('process', request=request)
 
     def microblock_test(self):
         #self.call('block_create_test')
@@ -112,20 +121,24 @@ class LogosRpc:
         assert (all(self.is_valid_hash(block_hash) for block_hash in block_hashes))
         return self.call('blocks', hashes=block_hashes)
 
+    def blocks_exist(self, block_hashes):
+        assert (all(self.is_valid_hash(block_hash) for block_hash in block_hashes))
+        return self.call('blocks_exist', hashes=block_hashes)
+
     def _consensus_blocks(self, type_name, hashes):
-        assert type_name in ['batch_blocks', 'micro_blocks', 'epochs']
+        assert type_name in ['request_blocks', 'micro_blocks', 'epochs']
         assert isinstance(hashes, list) and all(self.is_valid_hash(h) for h in hashes)
         return self.call(type_name, hashes=hashes)
 
-    def batch_blocks(self, hashes):
-        return self._consensus_blocks('batch_blocks', hashes)
+    def request_blocks(self, hashes):
+        return self._consensus_blocks('request_blocks', hashes)
 
-    def batch_blocks_latest(self, delegate_id='0', count='100', head=''):
+    def request_blocks_latest(self, delegate_id='0', count='100', head=''):
         call_dict = {'delegate_id': delegate_id, 'count': count}
         if head:
             assert self.is_valid_hash(head)
             call_dict['head'] = head
-        return self.call('batch_blocks_latest', **call_dict)
+        return self.call('request_blocks_latest', **call_dict)
 
     def micro_blocks(self, hashes):
         return self._consensus_blocks('micro_blocks', hashes)
@@ -163,15 +176,17 @@ class LogosRpc:
                 txns = [str(amt_mlgs) + '0' * MLGS_DEC for _ in range(count)]
         for amount in txns:
             create_data = self.block_create(
-                amount=amount,
-                destination=dest_addr,
+                txns=[{
+                    'amount': amount,
+                    'destination': dest_addr
+                }],
                 previous=prev,
-                key=source_key,
+                private_key=source_key,
                 fee_mlgs=fee_mlgs
             )
             blocks_to_process.append(create_data)
             prev = create_data['hash']
-        process_dataset = [self.process(block_to_process['block']) for block_to_process in blocks_to_process]
+        process_dataset = [self.process(block_to_process['request']) for block_to_process in blocks_to_process]
         return process_dataset
 
 
@@ -296,3 +311,14 @@ def pprint_log_lines(all_lines):
         print('NODE {}:'.format(i))
         for line in lines.split('\n'):
             print(line.replace('\\\\', '\\'))
+
+
+def parse_log_line(line):
+    m = re.search(r'\[(.* .*) (.*) (.*)\]: (.*)', line)
+    return m.groups()
+
+
+def batch(iterable, n=1):
+    length = len(iterable)
+    for idx in range(0, length, n):
+        yield iterable[idx:min(idx + n, length)]

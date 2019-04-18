@@ -8,6 +8,7 @@ import boto3
 import requests
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--disable_transition', action='store_true')
 parser.add_argument('--callback', action='store_true')
 parser.add_argument('--callback_address', default='pla.bs')
 parser.add_argument('--callback_port', default='80')
@@ -101,6 +102,8 @@ with open(config_path, 'w') as f:
     new_config = re.sub('{{DELEGATE_ID}}', delegate_id, new_config)
     new_config = re.sub('{{TXA_DEL_IP}}', private_ip, new_config)
     new_config = re.sub('{{TXA_IP}}', private_ip, new_config)
+    if args.disable_transition:
+        delegate_peers = delegate_peers[:int(len(delegate_peers) / 2)]
     new_config = re.sub('{{PEERS}}', json.dumps(delegate_peers, indent=4), new_config)
     new_config = json.loads(new_config)
     if args.callback and delegate_id == '0':

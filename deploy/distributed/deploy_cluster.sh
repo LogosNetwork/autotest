@@ -151,10 +151,8 @@ if [[ $# -ne 1 ]]; then
     invalidOpt=true
 else
     CLUSTER_NAME=$1
-    if [[ $(aws cloudformation describe-stacks --query "Stacks[].StackName" --output text | grep -w ${CLUSTER_NAME}) ]]; then
-        echo "Cluster already exists. Please use a different name."
-        invalidOpt=true
-    fi
+    aws cloudformation describe-stacks --stack-name ${CLUSTER_NAME} --query "Stacks[].StackName" --output text &> /dev/null
+    [[ $? -eq 0 ]] && echo "Cluster already exists. Please use a different name." && invalidOpt=true
 fi
 
 if [[ -n "$SSH" ]]; then

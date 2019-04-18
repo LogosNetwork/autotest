@@ -2,69 +2,76 @@ from tqdm.autonotebook import tqdm
 
 from utils import *
 
+MAX_TXN = 8
+PWR = 3
+N_WORKERS = 32
 
 class TestCaseMixin:
 
-    def test_00_account_creation(self, num_worker_threads=32, pwr=5):
-        self.create_accounts_parallel(int(self.num_accounts/2), pwr, num_worker_threads=num_worker_threads)
-        err_dict = self.verify_account_creation(pwr)
-        if len(err_dict):
-            print(err_dict)
-            return False
-        return True
+    def test_00_account_creation(self, pwr=PWR, txn_size=MAX_TXN, num_worker_threads=N_WORKERS):
+        r1_size = int(self.num_accounts / 2)
+        self.create_accounts_parallel(r1_size, pwr, txn_size, num_worker_threads=num_worker_threads)
+        return self.verify_account_creation(r1_size, txn_size, pwr)
 
-    def create_accounts_parallel(self, r1_size, powr=5, num_worker_threads=8):
+    def create_accounts_parallel(self, r1_size, powr=PWR, txn_size=MAX_TXN, num_worker_threads=N_WORKERS):
         d_id = 0
         base_balance = 1000  # in milli-lgs
-        send_amt = int(base_balance * (3 ** 10))
-        print('Creating initial account group of {} accounts'.format(r1_size), end='')
+        addn_mul = 3  # additional multiplier to provide leeway funding
+        # additional + 1 for a very loose txn fee limit
+        send_amt = int(base_balance * ((txn_size + 1 + 1) ** powr) * addn_mul)
+
+        sender_size = r1_size * txn_size
+        print('Creating initial account group of {} accounts'.format(sender_size), end='')
         for i in range(r1_size):
-            account = self.accounts[i]
-            d_id, request_data = self.create_next_genesis_txn(account['account'], d_id, 2000000000000)
-            self.delegates[d_id].process(request_data['block'])
+            txns = [{
+                'destination': self.accounts[i * txn_size + j]['account'],
+                'amount': send_amt
+            } for j in range(txn_size)]
+            d_id, request_data = self.create_next_genesis_txn(
+                txns,
+                d_id,
+            )
+            self.delegates[d_id].process(request_data['request'])
             d_id = designated_delegate(g_pub, request_data['hash'])
             if not self.wait_for_requests_persistence([request_data['hash']]):
-                sys.stderr.write('Creation stopped at index {}, account {}'.format(i, account['account']))
+                sys.stderr.write('Creation stopped at index {}, txns {}'.format(i, txns))
                 break
             print('.', end='')
         print()
         del d_id
 
-        sender_size = r1_size
-
         for i in range(powr):
             print('\nStarting round i = {}'.format(i + 1))
-            if not self.send_and_confirm(sender_size, send_amt, num_worker_threads):
+            send_amt = int(send_amt / (txn_size + 1 + 1))
+            if not self.send_and_confirm(sender_size, send_amt, txn_size, num_worker_threads):
                 print('Failed at iteration with exponent i={}'.format(i))
                 return
-            send_amt = int(send_amt / 2)
-            sender_size *= 2
+            sender_size *= (1 + txn_size)
 
-    def verify_account_creation(self, powr=5):
+    def verify_account_creation(self, r1_size, txn_size=MAX_TXN, powr=PWR):
         print('Verifying all accounts just got created...')
-        err_dict = {}
-        for i in tqdm(range(30 * (2 ** powr))):
-            account = self.accounts[i]['account']
-            try:
-                self.update_account_frontier(account_addr=account)
-            except LogosRPCError as e:
-                err_dict[i] = e.__dict__
-        return err_dict
+        num_to_check = (r1_size * txn_size) * ((txn_size + 1) ** powr)
+        for account_slice in tqdm(batch(self.account_list[:num_to_check], 2000)):
+            if self.delegates[0].accounts_exist([account['account'] for account in account_slice])['exist'] != '1':
+                return False
+        return True
 
     def update_account_frontier(self, account_addr):
         info = self.delegates[0].account_info(account_addr)
         self.account_frontiers[account_addr]['frontier'] = info['frontier']
 
-    def send_and_confirm(self, sender_size, send_amt, num_worker_threads):
+    def send_and_confirm(self, sender_size, send_amt, txn_size=MAX_TXN, num_worker_threads=N_WORKERS):
         d_ids = [random.randrange(0, self.num_delegates) for _ in range(sender_size)]
-        accounts_to_create = self.account_list[sender_size:sender_size * 2]
+        accounts_to_create = self.account_list[sender_size:sender_size * (1 + txn_size)]
         d_ids, request_data_list = zip(*[self.create_next_txn(
             self.accounts[j]['account'],
             self.accounts[j]['public'],
             self.accounts[j]['private'],
-            accounts_to_create[j]['account'],
-            d_ids[j],
-            send_amt
+            [{
+                'destination': accounts_to_create[j * txn_size + k]['account'],
+                'amount': send_amt
+            } for k in range(txn_size)],
+            d_ids[j]
         ) for j in range(sender_size)])
 
         # construct queue
@@ -74,10 +81,14 @@ class TestCaseMixin:
 
         for j in range(sender_size):
             q.put((j, d_ids[j], request_data_list[j]))
-        _ = self.process_request_queue(q, num_worker_threads)
+        resps = self.process_request_queue(q, num_worker_threads)
+        for k, r in resps.items():
+            if 'rpc_error' in r:
+                print(k, r)
 
         t1 = time()
         requests_to_check = [request_data['hash'] for request_data in request_data_list]
+        print('Time to construct check list: {:.6f}s'.format(time() - t1))
         if not self.wait_for_requests_persistence(requests_to_check):
             return False
         print('Time to wait for persistence: {:.6f}s'.format(time() - t1))
@@ -106,7 +117,7 @@ class TestCaseMixin:
                 except Empty:
                     break
                 try:
-                    resps[j] = self.nodes[d_id].process(request_data['block'])
+                    resps[j] = self.nodes[d_id].process(request_data['request'])
                 except LogosRPCError as e:
                     sys.stderr.write('Error at index {}!\n'.format(j))
                     resps[j] = e.__dict__
@@ -130,27 +141,24 @@ class TestCaseMixin:
         print('Time to process: {:.6f}s'.format(t1 - t0))
         return resps
 
-    def create_next_txn(self, sender_addr, sender_pub, sender_prv, destination, designated_id=0, amount_mlgs=None):
+    def create_next_txn(self, sender_addr, sender_pub, sender_prv, txns, designated_id=0):
         info_data = self.delegates[designated_id].account_info(sender_addr)
         prev = info_data['frontier']
         designated_id = designated_delegate(sender_pub, prev)
-        if amount_mlgs is None:
-            amount_mlgs = designated_id + 1
-        assert isinstance(amount_mlgs, int)
-        amount = str(amount_mlgs) + '0' * MLGS_DEC
+        for txn in txns:
+            txn['amount'] = amount_mlgs_to_string(txn['amount'])
         create_data = self.delegates[designated_id].block_create(
-            amount=amount,
-            destination=destination,
+            txns=txns,
             previous=prev,
-            key=sender_prv,
+            private_key=sender_prv,
             fee_mlgs=MIN_FEE_MLGS
         )
         return designated_id, create_data
 
-    def create_next_genesis_txn(self, destination, designated_id=0, amount_mlgs=None):
-        return self.create_next_txn(g_account, g_pub, g_prv, destination, designated_id, amount_mlgs)
+    def create_next_genesis_txn(self, txns, designated_id=0):
+        return self.create_next_txn(g_account, g_pub, g_prv, txns, designated_id)
 
-    def wait_for_requests_persistence(self, hashes, max_batch=2000, max_retries=30):
+    def wait_for_requests_persistence(self, hashes, max_batch=2000, max_retries=60):
         """
         Checks if given request hashes are persisted
         (This can be used to check if recipient accounts are created,
@@ -166,17 +174,15 @@ class TestCaseMixin:
         """
         assert(all(LogosRpc.is_valid_hash(h) for h in hashes))
 
-        def batch(iterable, n=1):
-            length = len(iterable)
-            for idx in range(0, length, n):
-                yield iterable[idx:min(idx + n, length)]
-
         def check_hash_persistence(hashes_to_check):
             # for i in range(self.num_nodes):
             for i in range(self.num_delegates):
                 try:
-                    self.delegates[i].blocks(hashes_to_check)
+                    exist = self.delegates[i].blocks_exist(hashes_to_check)
                 except LogosRPCError:
+                    return False
+                assert exist['exist'] in ['0', '1']
+                if exist['exist'] == '0':
                     return False
             return True
 
@@ -187,6 +193,10 @@ class TestCaseMixin:
                 return True
             sleep(1)
             retries += 1
-            if retries > max_retries and time() - t0 > 90:
+            if retries > max_retries or time() - t0 > int(len(hashes) / 600 + 30):
                 print(self.delegates[0].blocks(hashes))
                 return False
+
+
+def amount_mlgs_to_string(amount_mlgs):
+    return str(amount_mlgs) + '0' * MLGS_DEC

@@ -3,6 +3,8 @@ from time import sleep
 
 import boto3
 
+from utils import batch
+
 REGION = 'us-east-1'
 BENCH_DIR = '/home/ubuntu/bench'
 DATA_PATH = '{}/LogosTest'.format(BENCH_DIR)
@@ -171,7 +173,7 @@ def restart_logos(cluster_name, command_line_options='', clear_db=True, client=N
     return execute_command_on_cluster(cluster_name, commands, client)
 
 
-def update_logos(cluster_name, logos_id, command_line_options='', clear_db=True, client=None):
+def update_logos(cluster_name, logos_id, command_line_options='', restart=False, clear_db=True, client=None):
     """
     Updates logos_core binary and restarts it on remote cluster
 
@@ -180,6 +182,7 @@ def update_logos(cluster_name, logos_id, command_line_options='', clear_db=True,
         logos_id (:obj:`str`): identifier of logos binary on S3 bucket
         command_line_options (:obj:`str`): additional command line options for starting logos_core
             (other than --daemon --data_path /home/ubuntu/bench/LogosTest)
+        restart (bool): whether to restart software
         clear_db (bool): whether to wipe database on cluster
         client: a boto3 ssm client
 
@@ -193,7 +196,7 @@ def update_logos(cluster_name, logos_id, command_line_options='', clear_db=True,
         'aws s3 cp s3://logos-bench-{}/binaries/{}/logos_core {}/logos_core'.format(REGION, logos_id, BENCH_DIR),
         'chmod a+x {}/logos_core'.format(BENCH_DIR),
         'rm -f {}'.format(files_to_rm),
-        'sleep 20 && ' + gen_start_logos_command(command_line_options)
+        ('sleep 20 && ' + gen_start_logos_command(command_line_options))if restart else ''
     ]
     return execute_command_on_cluster(cluster_name, commands, client)
 
@@ -215,19 +218,22 @@ def gen_start_logos_command(command_line_options=''):
            '{} > /dev/null 2>&1 &'.format(command_line_options)
 
 
-def update_config(cluster_name, config_id, command_line_options='', new_generator=False, clear_db=True, callback=False,
-                  callback_args=None, client=None):
+def update_config(cluster_name, config_id='', command_line_options='', restart=False, new_generator=False,
+                  clear_db=True, callback=False, callback_args=None, disable_transition=False, client=None):
     """
 
     Args:
         cluster_name (:obj:`str`): AWS Cloudformation cluster name
-        config_id (:obj:`str`): identifier of config template on S3 bucket
+        config_id (:obj:`str`): identifier of config template on S3 bucket.
+            same config template will be used if this field is not provided
         command_line_options (:obj:`str`): additional command line options for starting logos_core
             (other than --daemon --data_path /home/ubuntu/bench/LogosTest)
+        restart (bool): whether to restart software
         new_generator (bool): whether to download latest gen_config.py
         clear_db (bool): whether to wipe database on cluster
         callback (bool): whether to use default callback webhook setup on node 0
         callback_args (dict): dict specifying 'callback_address', 'callback_port', and/or 'callback_target'
+        disable_transition (bool): whether to disable epoch transition and only use num_delegate nodes
         client: a boto3 ssm client
 
     Returns:
@@ -250,16 +256,20 @@ def update_config(cluster_name, config_id, command_line_options='', new_generato
         'kill -9 $(pgrep logos_core)',
         'aws s3 cp s3://logos-bench-{}/helpers/gen_config.py {}/gen_config.py'.format(REGION, BENCH_DIR)
         if new_generator else '',
-        'aws s3 cp s3://logos-bench-{region}/configs/{conf_id}/bench.json.tmpl {bench_dir}/config/bench.json.tmpl && '
-        'python {bench_dir}/gen_config.py{callback} && cp {bench_dir}/config/bench.json {data_path}/config.json'.format(
+        'aws s3 cp s3://logos-bench-{region}/configs/{conf_id}/bench.json.tmpl {bench_dir}/config/bench.json.tmpl'
+            .format(
             region=REGION,
             conf_id=config_id,
             bench_dir=BENCH_DIR,
+        ) if config_id else '',
+        'python {bench_dir}/gen_config.py{callback}{dt} && cp {bench_dir}/config/bench.json {data_path}/config.json'.format(
+            bench_dir=BENCH_DIR,
             callback=callback_str,
+            dt=' --disable_transition' if disable_transition else '',
             data_path=DATA_PATH
         ),
         'rm -f {}'.format(files_to_rm),
-        'sleep 20 && ' + gen_start_logos_command(command_line_options)
+        ('sleep 20 && ' + gen_start_logos_command(command_line_options)) if restart else ''
     ]
     return execute_command_on_cluster(cluster_name, commands, client)
 
@@ -297,15 +307,16 @@ def stop_cluster_instances(cluster_name):
         ScalingProcesses=['Launch'],
     )
 
-    # 2. protect instances from scale in
+    # 2. detach instances from autoscaling group (reduce desired number of instances of asg)
     ec2_client = boto3.client('ec2', region_name=REGION)
     ids_to_stop = get_cluster_instance_ids_by_state(cluster_name, 'running', ec2_client)
 
-    _ = asc_client.set_instance_protection(
-        InstanceIds=ids_to_stop,
-        AutoScalingGroupName=asg_name,
-        ProtectedFromScaleIn=True
-    )
+    for ids_batch in batch(ids_to_stop, 20):
+        _ = asc_client.detach_instances(
+            InstanceIds=ids_batch,
+            AutoScalingGroupName=asg_name,
+            ShouldDecrementDesiredCapacity=True,
+        )
 
     # 3. stop instances
     _ = ec2_client.stop_instances(InstanceIds=ids_to_stop)
@@ -315,24 +326,41 @@ def start_cluster_instances(cluster_name):
 
     # 1. start instances
     ec2_client = boto3.client('ec2', region_name=REGION)
-    ids_to_start = get_cluster_instance_ids_by_state(cluster_name, 'stopped', ec2_client)
+
+    all_ids = get_cluster_instance_ids_by_state(cluster_name, '', ec2_client)
+    counter = 0
+    while True:
+        ids_to_start = get_cluster_instance_ids_by_state(cluster_name, 'stopped', ec2_client)
+        if len(ids_to_start) < len(all_ids):
+            print(' ' * 60 + '\r' + 'Waiting for all instances to stop first{}\r'.format('.' * counter))
+            counter = counter % 3 + 1
+            sleep(5)
+        else:
+            print('\n')
+            break
 
     _ = ec2_client.start_instances(InstanceIds=ids_to_start)
 
-    # 2. disable protection from scale in
+    # 2. resume ASG auto launch
     asg_name = get_cluster_asg_name(cluster_name)
     asc_client = boto3.client('autoscaling', region_name=REGION)
-    _ = asc_client.set_instance_protection(
-        InstanceIds=ids_to_start,
-        AutoScalingGroupName=asg_name,
-        ProtectedFromScaleIn=False
-    )
-
-    # 3. resume ASG auto launch
     _ = asc_client.resume_processes(
         AutoScalingGroupName=asg_name,
         ScalingProcesses=['Launch'],
     )
+
+    # 3. wait till instances are running, attach instances back to autoscaling group
+    while True:
+        pending_ids = get_cluster_instance_ids_by_state(cluster_name, 'pending', ec2_client)
+        if not pending_ids:
+            break
+        sleep(2)
+
+    for ids_batch in batch(ids_to_start, 20):
+        _ = asc_client.attach_instances(
+            InstanceIds=ids_batch,
+            AutoScalingGroupName=asg_name
+        )
 
 
 def get_cluster_instance_ids_by_state(cluster_name, state_name='running', ec2_client=None):
@@ -340,13 +368,16 @@ def get_cluster_instance_ids_by_state(cluster_name, state_name='running', ec2_cl
         ec2_client = boto3.client('ec2', region_name=REGION)
     filters = [
         {
-            'Name': 'instance-state-name',
-            'Values': [state_name]
-        }, {
             'Name': 'tag:aws:cloudformation:stack-name',
             'Values': [cluster_name]
         }
     ]
+
+    if state_name:
+        filters.append({
+            'Name': 'instance-state-name',
+            'Values': [state_name]
+        })
 
     resp = ec2_client.describe_instances(Filters=filters)
     ids = ec2ids_from_resp(resp)
@@ -364,6 +395,7 @@ def get_cluster_asg_name(cluster_name):
 
 def ec2ids_from_resp(resp):
     return [ins['InstanceId'] for res in resp['Reservations'] for ins in res['Instances']]
+
 
 def run_db_get(cluster_name, dbname, key, client=None):
     commands = [
