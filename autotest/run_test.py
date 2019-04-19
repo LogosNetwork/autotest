@@ -231,13 +231,17 @@ if __name__ == '__main__':
         cluster = 'InternalTest'
     else:
         cluster = sys.argv[1]
-        
-    if cluster is not 'InternalTest':
+
+    if cluster.isdigit():
+        cluster = eval(cluster)
+
+    if cluster is not 'InternalTest' and not isinstance(cluster, int):
         restart_logos(cluster)
-        
-    test_case = TestRequests(cluster)
-    while not test_case.is_cluster_initialized():
-        sleep(2)
-        
-    test_case.run()
     
+    test_case = TestRequests(cluster)
+    #while not test_case.is_cluster_initialized():
+    #    sleep(2)
+        
+    #test_case.run()
+    test_case.test_00_account_creation()
+    test_case.test_update_cont()

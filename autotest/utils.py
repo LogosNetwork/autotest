@@ -96,7 +96,176 @@ class LogosRpc:
             transactions=txns,
             work='{0}'.format(random.randint(0, 1000000000)),
         )
+    
+    def block_create_issuance(self, private_key, symbol, name, total_supply="2100000000000000", type="issuance", fee_mlgs=MIN_FEE_MLGS, controllers=[], settings=[], previous="00000000000000000000000000000000", fee_type='flat', fee_rate=0):
+        return self.call(
+            'block_create',
+            type=type,
+            total_supply=total_supply,
+            symbol=symbol,
+            name=name,
+            fee_type=fee_type,
+            fee_rate=fee_rate,
+            issuer_info='',
+            private_key=private_key,
+            previous=previous,
+            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            controllers=controllers,
+            settings=settings,
+            work='{0}'.format(random.randint(0, 1000000000))
+        )
 
+    def block_create_tokreq(self, previous, private_key, token_id, type="distribute", representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS, transaction=""):
+        return self.call(
+            'block_create',
+            type=type,
+            private_key=private_key,
+            previous=previous,
+            token_id=token_id,
+            transaction=transaction,
+            fee=str(fee_mlgs),
+            work='{0}'.format(random.randint(0, 1000000000))
+        )
+    
+    def block_create_revoke(self, previous, private_key, source, token_id, type="revoke", representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS, transaction=""):
+        return self.call(
+            'block_create',
+            type=type,
+            private_key=private_key,
+            previous=previous,
+            token_id=token_id,
+            source=source,
+            transaction=transaction,
+            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            work='{0}'.format(random.randint(0, 1000000000))
+        )
+
+    def block_create_burn(self, previous, private_key, token_id, amount, type="burn", representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS):
+        return self.call(
+            'block_create',
+            type=type,
+            private_key=private_key,
+            previous=previous,
+            token_id=token_id,
+            amount=amount,
+            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            work='{0}'.format(random.randint(0, 1000000000))
+            )
+    
+    def block_create_token_send(self, previous, private_key, token_id, type="token_send", representative=DUMMY_REP, fee=str(MIN_FEE_MLGS)+'0'*MLGS_DEC, transactions=""):
+        return self.call(
+            'block_create',
+            type=type,
+            private_key=private_key,
+            previous=previous,
+            token_id=token_id,
+            token_fee='1000000000000',
+            transactions=transactions,
+            fee=fee,
+            work='{0}'.format(random.randint(0, 1000000000))
+        )
+
+    def block_create_withdraw(self, previous, private_key, token_id, type="distribute", representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS, transaction=""):
+        return self.call(
+            'block_create',
+            type=type,
+            private_key=private_key,
+            previous=previous,
+            token_id=token_id,
+            transaction=transaction,
+            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            #fee='0',
+            work='{0}'.format(random.randint(0, 1000000000))
+        )
+
+    def block_create_additional_issuance(self, previous, private_key, token_id, amount, type="issue_additional", representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS):
+        return self.call(
+            'block_create',
+            type=type,
+            private_key=private_key,
+            previous=previous,
+            token_id=token_id,
+            amount=amount,
+            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            work='{0}'.format(random.randint(0, 1000000000))
+        )
+
+    def block_create_change_setting(self, previous, key, token_id, setting, value, type="change_setting", representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS):
+        return self.call(
+            'block_create',
+            type=type,
+            private_key=key,
+            previous=previous,
+            token_id=token_id,
+            setting=setting,
+            value=value,
+            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            work='{0}'.format(random.randint(0, 1000000000))
+        )
+    
+    def block_create_update_issuer_info(self, previous, private_key, token_id, new_info, type="update_issuer_info", representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS):
+        return self.call(
+            'block_create',
+            type=type,
+            private_key=private_key,
+            previous=previous,
+            token_id=token_id,
+            new_info=new_info,
+            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            work='{0}'.format(random.randint(0, 1000000000))
+        )
+
+    def block_create_adjust_user_status(self, previous, private_key, token_id, status, account, type="adjust_user_status", fee_mlgs=MIN_FEE_MLGS):
+        return self.call(
+            'block_create',
+            type=type,
+            private_key=private_key,
+            previous=previous,
+            token_id=token_id,
+            status=status,
+            account=account,
+            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            work='{0}'.format(random.randint(0, 1000000000))
+        )
+
+    def block_create_immute_setting(self, previous, private_key, token_id, setting, type="immute_setting", representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS):
+        return self.call(
+            'block_create',
+            type=type,
+            private_key=private_key,
+            previous=previous,
+            token_id=token_id,
+            setting=setting,
+            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            work='{0}'.format(random.randint(0, 1000000000))
+        )
+
+    def block_create_adjust_fee(self, previous, private_key, token_id, fee_type, fee_rate, type="adjust_fee", fee_mlgs=MIN_FEE_MLGS):
+        return self.call(
+            'block_create',
+            type=type,
+            private_key=private_key,
+            previous=previous,
+            token_id=token_id,
+            fee_type=fee_type,
+            fee_rate=fee_rate,
+            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            work='{0}'.format(random.randint(0, 1000000000))
+        )
+
+    def block_create_update_controller(self, previous, private_key, token_id, action, controller, type="update_controller", fee_mlgs=MIN_FEE_MLGS):
+        return self.call(
+            'block_create',
+            type=type,
+            private_key=private_key,
+            previous=previous,
+            token_id=token_id,
+            action=action,
+            controller=controller,
+            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            work='{0}'.format(random.randint(0, 1000000000))
+        )
+    
     def process(self, request):
         return self.call('process', request=request)
 
