@@ -43,7 +43,8 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         self.reset_delegates()
         self.cluster = cluster_arg
         self.num_accounts = 6
-
+        self.tokens = []
+        
         # Preload accounts, create if file not present
         with open(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                                'data/accounts48000.pickle'), 'rb') as handle:
@@ -242,6 +243,9 @@ if __name__ == '__main__':
     #while not test_case.is_cluster_initialized():
     #    sleep(2)
         
-    #test_case.run()
-    test_case.test_00_account_creation()
-    test_case.test_update_cont()
+    test_case.run()
+    #test_case.test_00_logos_requests()
+    #test_case.test_01_account_creation()
+    #test_case.test_10_token_requests()
+    #test_case.test_11_token_requests_flood()
+    
