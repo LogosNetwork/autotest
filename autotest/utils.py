@@ -21,6 +21,7 @@ LGS_DEC = 24
 MLGS_DEC = 21
 
 MIN_FEE_MLGS = 10
+MIN_FEE = str(MIN_FEE_MLGS)+'0'*MLGS_DEC
 
 
 class LogosRPCError(Exception):
@@ -54,10 +55,10 @@ class LogosRpc:
         return isinstance(h, str) and len(h) == 64 and all(isinstance(int(c, 16), int) for c in h)
 
     # main class function for invoking RPC calls
-    def call(self, action, **kwargs):
-        message = {'rpc_action': action, **kwargs}
-        uri = self.txa_json_uri if action == 'process' else self.uri
-        resp = requests.post(uri, json=message, headers={'Content-Type': 'application/json'})
+    def call(self, rpc_action, **kwargs):
+        message = {'rpc_action': rpc_action, **kwargs}
+        #uri = self.txa_json_uri if action == 'process' else self.uri
+        resp = requests.post(self.uri, json=message, headers={'Content-Type': 'application/json'})
         res = resp.json()
         if 'error' in res:
             raise LogosRPCError(self.uri, message, res['error'])
@@ -85,10 +86,10 @@ class LogosRpc:
     def key_expand(self, key):
         return self.call('key_expand', key=key)
 
-    def block_create(self, txns, previous, private_key=g_prv, representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS):
+    def block_create(self, txns, previous, type="send", private_key=g_prv, representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS):
         return self.call(
             'block_create',
-            type='send',
+            type=type,
             private_key=private_key,
             representative=representative,
             previous=previous,
@@ -97,7 +98,7 @@ class LogosRpc:
             work='{0}'.format(random.randint(0, 1000000000)),
         )
     
-    def block_create_issuance(self, private_key, symbol, name, total_supply="2100000000000000", type="issuance", fee_mlgs=MIN_FEE_MLGS, controllers=[], settings=[], previous="00000000000000000000000000000000", fee_type='flat', fee_rate=0):
+    def block_create_issuance(self, private_key, symbol, name, total_supply="2100000000000000", type="issuance", fee=MIN_FEE_MLGS, controllers=[], settings=[], previous="00000000000000000000000000000000", fee_type='flat', fee_rate=0):
         return self.call(
             'block_create',
             type=type,
@@ -109,13 +110,13 @@ class LogosRpc:
             issuer_info='',
             private_key=private_key,
             previous=previous,
-            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            fee=str(fee),#+'0'*MLGS_DEC,
             controllers=controllers,
             settings=settings,
             work='{0}'.format(random.randint(0, 1000000000))
         )
 
-    def block_create_tokreq(self, previous, private_key, token_id, type="distribute", representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS, transaction=""):
+    def block_create_distribute(self, previous, private_key, token_id, type="distribute", representative=DUMMY_REP, fee=MIN_FEE_MLGS, transaction=""):
         return self.call(
             'block_create',
             type=type,
@@ -123,11 +124,11 @@ class LogosRpc:
             previous=previous,
             token_id=token_id,
             transaction=transaction,
-            fee=str(fee_mlgs),
+            fee=str(fee),
             work='{0}'.format(random.randint(0, 1000000000))
         )
     
-    def block_create_revoke(self, previous, private_key, source, token_id, type="revoke", representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS, transaction=""):
+    def block_create_revoke(self, previous, private_key, source, token_id, type="revoke", representative=DUMMY_REP, fee=MIN_FEE_MLGS, transaction=""):
         return self.call(
             'block_create',
             type=type,
@@ -136,11 +137,11 @@ class LogosRpc:
             token_id=token_id,
             source=source,
             transaction=transaction,
-            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            fee=str(fee),
             work='{0}'.format(random.randint(0, 1000000000))
         )
 
-    def block_create_burn(self, previous, private_key, token_id, amount, type="burn", representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS):
+    def block_create_burn(self, previous, private_key, token_id, amount, type="burn", representative=DUMMY_REP, fee=MIN_FEE_MLGS):
         return self.call(
             'block_create',
             type=type,
@@ -148,24 +149,24 @@ class LogosRpc:
             previous=previous,
             token_id=token_id,
             amount=amount,
-            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            fee=str(fee),
             work='{0}'.format(random.randint(0, 1000000000))
             )
     
-    def block_create_token_send(self, previous, private_key, token_id, type="token_send", representative=DUMMY_REP, fee=str(MIN_FEE_MLGS)+'0'*MLGS_DEC, transactions=""):
+    def block_create_token_send(self, previous, private_key, token_id, type="token_send", representative=DUMMY_REP, fee=MIN_FEE_MLGS, token_fee='100', transactions=""):
         return self.call(
             'block_create',
             type=type,
             private_key=private_key,
             previous=previous,
             token_id=token_id,
-            token_fee='1000000000000',
+            token_fee=token_fee,
             transactions=transactions,
-            fee=fee,
+            fee=str(fee),
             work='{0}'.format(random.randint(0, 1000000000))
         )
 
-    def block_create_withdraw(self, previous, private_key, token_id, type="distribute", representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS, transaction=""):
+    def block_create_withdraw(self, previous, private_key, token_id, type="distribute", representative=DUMMY_REP, fee=MIN_FEE_MLGS, transaction=""):
         return self.call(
             'block_create',
             type=type,
@@ -173,12 +174,11 @@ class LogosRpc:
             previous=previous,
             token_id=token_id,
             transaction=transaction,
-            fee=str(fee_mlgs) + '0' * MLGS_DEC,
-            #fee='0',
+            fee=str(fee),
             work='{0}'.format(random.randint(0, 1000000000))
         )
 
-    def block_create_additional_issuance(self, previous, private_key, token_id, amount, type="issue_additional", representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS):
+    def block_create_additional_issuance(self, previous, private_key, token_id, amount, type="issue_additional", representative=DUMMY_REP, fee=MIN_FEE_MLGS):
         return self.call(
             'block_create',
             type=type,
@@ -186,24 +186,24 @@ class LogosRpc:
             previous=previous,
             token_id=token_id,
             amount=amount,
-            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            fee=str(fee),
             work='{0}'.format(random.randint(0, 1000000000))
         )
 
-    def block_create_change_setting(self, previous, key, token_id, setting, value, type="change_setting", representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS):
+    def block_create_change_setting(self, previous, private_key, token_id, setting, value, type="change_setting", representative=DUMMY_REP, fee=MIN_FEE_MLGS):
         return self.call(
             'block_create',
             type=type,
-            private_key=key,
+            private_key=private_key,
             previous=previous,
             token_id=token_id,
             setting=setting,
             value=value,
-            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            fee=str(fee),
             work='{0}'.format(random.randint(0, 1000000000))
         )
     
-    def block_create_update_issuer_info(self, previous, private_key, token_id, new_info, type="update_issuer_info", representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS):
+    def block_create_update_issuer_info(self, previous, private_key, token_id, new_info, type="update_issuer_info", representative=DUMMY_REP, fee=MIN_FEE_MLGS):
         return self.call(
             'block_create',
             type=type,
@@ -211,11 +211,11 @@ class LogosRpc:
             previous=previous,
             token_id=token_id,
             new_info=new_info,
-            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            fee=str(fee),
             work='{0}'.format(random.randint(0, 1000000000))
         )
 
-    def block_create_adjust_user_status(self, previous, private_key, token_id, status, account, type="adjust_user_status", fee_mlgs=MIN_FEE_MLGS):
+    def block_create_adjust_user_status(self, previous, private_key, token_id, status, account, type="adjust_user_status", fee=MIN_FEE_MLGS):
         return self.call(
             'block_create',
             type=type,
@@ -224,11 +224,11 @@ class LogosRpc:
             token_id=token_id,
             status=status,
             account=account,
-            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            fee=str(fee),
             work='{0}'.format(random.randint(0, 1000000000))
         )
 
-    def block_create_immute_setting(self, previous, private_key, token_id, setting, type="immute_setting", representative=DUMMY_REP, fee_mlgs=MIN_FEE_MLGS):
+    def block_create_immute_setting(self, previous, private_key, token_id, setting, type="immute_setting", representative=DUMMY_REP, fee=MIN_FEE_MLGS):
         return self.call(
             'block_create',
             type=type,
@@ -236,11 +236,11 @@ class LogosRpc:
             previous=previous,
             token_id=token_id,
             setting=setting,
-            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            fee=str(fee),
             work='{0}'.format(random.randint(0, 1000000000))
         )
 
-    def block_create_adjust_fee(self, previous, private_key, token_id, fee_type, fee_rate, type="adjust_fee", fee_mlgs=MIN_FEE_MLGS):
+    def block_create_adjust_fee(self, previous, private_key, token_id, fee_type, fee_rate, type="adjust_fee", fee=MIN_FEE_MLGS):
         return self.call(
             'block_create',
             type=type,
@@ -249,11 +249,11 @@ class LogosRpc:
             token_id=token_id,
             fee_type=fee_type,
             fee_rate=fee_rate,
-            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            fee=str(fee),
             work='{0}'.format(random.randint(0, 1000000000))
         )
 
-    def block_create_update_controller(self, previous, private_key, token_id, action, controller, type="update_controller", fee_mlgs=MIN_FEE_MLGS):
+    def block_create_update_controller(self, previous, private_key, token_id, action, controller, type="update_controller", fee=MIN_FEE_MLGS):
         return self.call(
             'block_create',
             type=type,
@@ -262,7 +262,7 @@ class LogosRpc:
             token_id=token_id,
             action=action,
             controller=controller,
-            fee=str(fee_mlgs) + '0' * MLGS_DEC,
+            fee=str(fee),
             work='{0}'.format(random.randint(0, 1000000000))
         )
     
@@ -431,8 +431,11 @@ class RemoteLogsHandler:
 
 class LocalLogsHandler:
 
+    LOG_DIR = '../../cloud-benchmark-deployment/deploy/local/DB/'
+
     def __init__(self, ips):
         self.ips = ips
+        self.num_nodes = len(self.ips)
 
     def get_command_output(self, command, node_id):
         pass
@@ -441,10 +444,17 @@ class LocalLogsHandler:
         pass
 
     def grep_lines(self, pattern, node_id=None):
-        pass
+        log = max(os.listdir(LocalLogsHandler.LOG_DIR+'Consensus_'+str(node_id)+'/log/'))  
+        lines = subprocess.check_output(["grep", "-Er", pattern, LocalLogsHandler.LOG_DIR+'Consensus_'+str(node_id)+'/log/'+log])
+        lines_str = lines.decode('utf-8')
+        if(lines_str.endswith('\n')):
+            return [lines_str[:-1]]
+        return [lines.decode('utf-8')]
 
     def grep_count(self, pattern, node_id=None):
-        pass
+        lines = self.grep_lines(pattern, node_id)[0]
+        splitlines = lines.split('\n')
+        return len(splitlines)
 
 
 """

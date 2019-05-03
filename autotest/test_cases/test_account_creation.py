@@ -1,14 +1,14 @@
-from tqdm.autonotebook import tqdm
+from tqdm import tqdm
 
 from utils import *
 
 MAX_TXN = 8
-PWR = 3
+PWR = 2
 N_WORKERS = 32
 
 class TestCaseMixin:
 
-    def test_00_account_creation(self, pwr=PWR, txn_size=MAX_TXN, num_worker_threads=N_WORKERS):
+    def test_01_account_creation(self, pwr=PWR, txn_size=MAX_TXN, num_worker_threads=N_WORKERS):
         r1_size = int(self.num_accounts / 2)
         self.create_accounts_parallel(r1_size, pwr, txn_size, num_worker_threads=num_worker_threads)
         return self.verify_account_creation(r1_size, txn_size, pwr)
