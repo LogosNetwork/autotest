@@ -13,7 +13,7 @@ class TestCaseMixin:
         test_res.append(self.genesis_to_account())
 
         #SEND TO SELF
-        test_res.append(self.send_to_self())
+        #test_res.append(self.send_to_self())
 
         #SINGLE SEND PRIMARY
         test_res.append(self.single_send_primary())
@@ -83,13 +83,23 @@ class TestCaseMixin:
         return True
 
     def genesis_to_account(self):
-        print("HERE")
         gen_before = self.nodes[0].account_info()
         gen_prev = gen_before['frontier']
+
+        try:
+            account_before = self.nodes[0].account_info(self.account_list[1]['account'])
+            amount_before = eval(account_before['balance'])
+        except LogosRPCError as error:
+            amount_before = 0
+
+        try:
+            account2_before = self.nodes[0].account_info(self.account_list[2]['account'])
+            amount2_before = eval(account2_before['balance'])
+        except LogosRPCError as error:
+            amount2_before = 0
         
         d_id = designated_delegate(g_pub, gen_prev)
         send_amt = eval(MIN_FEE)*5
-        print(send_amt)
         
         created = self.nodes[d_id].block_create(
             previous=gen_prev,
@@ -102,13 +112,13 @@ class TestCaseMixin:
             
         gen_after = self.nodes[0].account_info()
         account_after = self.nodes[0].account_info(self.account_list[1]['account'])
-        account2_after = self.nodes[0].account_info(self.account_list[1]['account'])
+        account2_after = self.nodes[0].account_info(self.account_list[2]['account'])
 
         if eval(gen_after['balance']) != eval(gen_before['balance'])-send_amt-(send_amt+1)-eval(MIN_FEE):
             print("genesis to account: genesis balance failed")
             return False
 
-        if eval(account_after['balance']) != send_amt or eval(account2_after['balance']) != send_amt+1:
+        if eval(account_after['balance']) != send_amt + amount_before or eval(account2_after['balance']) != send_amt+1 + amount2_before:
             print("genesis to account: account balance failed")
             return False
         return True
