@@ -248,4 +248,4 @@ if __name__ == '__main__':
     #test_case.test_01_account_creation()
     #test_case.test_10_token_requests()
     #test_case.test_11_token_requests_flood()
-    
+    #test_case.test_token_illegal()

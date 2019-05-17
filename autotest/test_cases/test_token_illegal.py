@@ -7,2156 +7,1260 @@ import qlmdb3
 
 class TestCaseMixin:
 
-    #malformed_amt = {'decimal':'1234.1', 'negative':'-1234', 'empty':''}
-    #malformed_dest = {'empty':'', 'publickey':'E41C9CFF2C98A049519C516E275F216A22A2C28290322A6504679F7C323F63D6'}
-    
-    def test_token_issuance_illegal(self):
-        print(self.nodes[0].account_info(self.account_list[1]['account']))
-        prev = self.nodes[0].account_info(self.account_list[1]['account'])['frontier']
-        '''
+    def test_token_illegal(self):
+        test_results = []
+
+        #================================================================
+        # ACCOUNT THAT WILL CREATE TOKENS
+        #================================================================
+        accnt_main = self.account_list[0] 
         gen_info = self.nodes[0].account_info()
+        gen_prev = gen_info['frontier']
+
+        for i in range(2):
+            d_id = designated_delegate(g_pub, gen_prev)
+            created = self.nodes[0].block_create(
+                previous=gen_prev,
+                txns=[{"destination":self.account_list[6*i]['account'], "amount":"30000000000000000000000000000000"},
+                      {"destination":self.account_list[6*i+1]['account'], "amount":"30000000000000000000000000000000"},
+                      {"destination":self.account_list[6*i+2]['account'], "amount":"30000000000000000000000000000000"},
+                      {"destination":self.account_list[6*i+3]['account'], "amount":"30000000000000000000000000000000"},
+                      {"destination":self.account_list[6*i+4]['account'], "amount":"30000000000000000000000000000000"},
+                      {"destination":self.account_list[6*i+5]['account'], "amount":"30000000000000000000000000000000"}
+                ]
+            )
+            self.nodes[d_id].process(created['request'])
+            if not self.wait_for_requests_persistence([created['hash']]):
+                sys.stderr.write('Stopped at funding account')
+            gen_prev = created['hash']
+            
+        #================================================================
+        # MAIN TOKEN ACCOUNT
+        #================================================================
+        accnt_main_info = self.nodes[0].account_info(accnt_main['account'])
+        d_id = designated_delegate(accnt_main['public'], accnt_main_info['frontier'])
+        created = self.nodes[d_id].block_create_issuance(
+            private_key=accnt_main['private'],
+            previous=accnt_main_info['frontier'],
+            fee_type='flat',
+            fee_rate='10',
+            symbol='TEST',
+            name='test_token',
+            controllers=[{"account":accnt_main['account'], "privileges": ["distribute", "burn", "issuance", "withdraw_fee", "withdraw_logos", "revoke", "update_issuer_info", "change_freeze", "update_controller", "change_modify_freeze", "freeze", "adjust_fee"]},
+                         {"account":self.account_list[1]['account'], "privileges":[]},
+                         {"account":self.account_list[2]['account'], "privileges":[]},
+                         {"account":self.account_list[3]['account'], "privileges":[]},
+                         {"account":self.account_list[4]['account'], "privileges":[]},
+                         {"account":self.account_list[5]['account'], "privileges":[]},
+                         {"account":self.account_list[6]['account'], "privileges":[]},
+                         {"account":self.account_list[7]['account'], "privileges":[]},
+                         {"account":self.account_list[8]['account'], "privileges":[]}
+            ],
+            settings=["revoke", "issuance", "modify_freeze", "freeze", "adjust_fee"]
+        )
+        self.nodes[d_id].process(created['request'])
+        if not self.wait_for_requests_persistence([created['hash']]):
+            sys.stderr.write('Stopped at funding account')
+        coin = eval(created['request'])
+        token_account = qlmdb3.toaccount(qlmdb3.unhexlify(coin['token_id']))
+        token_main = {"token_id":coin['token_id'], "account":token_account}
+
+        gen_info = self.nodes[0].account_info()
+        gen_prev = gen_info['frontier']
+        d_id = designated_delegate(g_pub, gen_prev)
         created = self.nodes[0].block_create(
-            previous=gen_info['frontier'],
-            transactions=[{"destination":self.account_list[1]['account'], "amount":"3000000000000000000000000000000000000"}]
+                previous=gen_prev,
+                txns=[{"destination":token_account, "amount":"30000000000000000000000000000000"}]
         )
+        self.nodes[d_id].process(created['request'])
+        if not self.wait_for_requests_persistence([created['hash']]):
+            sys.stderr.write('Stopped at funding account')
 
-        
-        self.nodes[0].process(created['request'])
-        sleep(7)
-        '''
-        #print(account_info)
-
-        print("long symbol")
+        #================================================================
+        # INSUFFICIENT FEE LOGOS ACCOUNT
+        #================================================================
+        accnt_poor = self.account_list[-1]
         try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='QWERTYUIO',
-                name='sgcoin',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["burn","distribute"]}],
-                settings=["revoke"]
-            )
-            
-            #self.nodes[0].process(created['request'])
-            self.nodes[0].process(created)
-            print('symbol: too long symbol check fails')
-            #return False
+            info = self.nodes[0].account_info(accnt_poor['account'])
+            # make account with insufficient funds if it exists
+            d_id = designated_delegate(accnt_poor['public'], info['frontier'])
+            if eval(info['balance']) > eval(MIN_FEE)-1:
+                created = self.nodes[d_id].block_create(
+                    private_key = accnt_poor['private'],
+                    previous = info['frontier'],
+                    txns = [{"destination":accnt_main['account'], "amount":(eval(info['balance'])-2*eval(MIN_FEE)-1)}]
+                )
+                print(created)
+                self.nodes[d_id].process(created['request'])
+                if not self.wait_for_requests_persistence([created['hash']]):
+                    sys.stderr.write('Stopped at funding account')
         except LogosRPCError as error:
-            print(error)
-
-        print("illegal symbol")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='!SG',
-                name='sgcoin',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["burn","distribute"]}],
-                settings=["revoke"]
-            )
-            self.nodes[0].process(created['request'])
-            print('symbol: illegal symbol char')
-        except LogosRPCError as error:
-            print(error)
-
-        print("empty symbol")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='',
-                name='sgcoin',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["burn","distribute"]}],
-                settings=["revoke"]
-            )
-            self.nodes[0].process(created['request'])
-            print('symbol: empty symbol fails')
-        except LogosRPCError as error:
-            print(error)    
-
-
-        print("no name")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                symbol='SG',
-                name='',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["burn","distribute"]}],
-                settings=["revoke"]
-            )
-            self.nodes[0].process(created['request'])
-            print('name: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        print("total supply: empty")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='SG',
-                name='sgcoin',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["burn","distribute"]}],
-                settings=["revoke"],
-                total_supply=''
-            )
-            self.nodes[0].process(created['request'])
-            print('supply: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        
-        print("total supply: decimal")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='SG',
-                name='sgcoin',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["burn","distribute"]}],
-                settings=["revoke"],
-                total_supply='1234.12'
-            )
-            self.nodes[0].process(created['request'])
-            print('supply: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        print("total supply: negative")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='SG',
-                name='sgcoin',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["burn","distribute"]}],
-                settings=["revoke"],
-                total_supply='-1234'
-            )
-            self.nodes[0].process(created['request'])
-            print('name: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        '''
-        print("total supply: int")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='TEST',
-                name='tscoin1',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["burn","distribute"]}],
-                settings=["revoke"],
-                total_supply=1200000000000
+            gen_info = self.nodes[0].account_info()
+            gen_prev = gen_info['frontier']
+            d_id = designated_delegate(g_pub, gen_prev)
+            created = self.nodes[0].block_create(
+                previous=gen_prev,
+                txns=[{"destination":accnt_poor['account'], "amount":eval(MIN_FEE)-1}]
             )
             print(created)
-            self.nodes[0].process(created['request'])
-            print('name: fails')
-        except LogosRPCError as error:
-            print(error)
+            self.nodes[d_id].process(created['request'])
+            if not self.wait_for_requests_persistence([created['hash']]):
+                sys.stderr.write('Stopped at funding account')
 
-        '''
-        
-        print("total supply: no amount")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='TEST2',
-                name='testcoin2',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["burn","distribute"]}],
-                settings=["revoke"],
-                total_supply=''
-            )
-            self.nodes[0].process(created['request'])
-            print('total supply: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        '''
-        print("fee_type: Uppercase")
-        try:
-            print(prev)
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='TEST3',
-                name='testcoin3',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["burn","distribute"]}],
-                settings=["revoke"],
-                fee_type='Flat'
-            )
-            print(created)
-            self.nodes[0].process(created['request'])
-            print('fee_type: fails')
-        except LogosRPCError as error:
-            print(error)
-        '''
-        print("fee_type: empty")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='TEST3',
-                name='testcoin3',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["burn","distribute"]}],
-                settings=["revoke"],
-                fee_type=''
-            )
-            print(created)
-            self.nodes[0].process(created['request'])
-            print('fee_type: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        print("fee_type: empty")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='TEST3',
-                name='testcoin3',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["burn","distribute"]}],
-                settings=["revoke"],
-                fee_type=''
-            )
-            print(created)
-            self.nodes[0].process(created['request'])
-            print('fee_type: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        print("fee_rate: above100")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='TEST3',
-                name='testcoin3',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["burn","distribute"]}],
-                settings=["revoke"],
-                fee_type='percentage',
-                fee_rate='101'
-            )
-            print(created)
-            self.nodes[0].process(created['request'])
-            print('fee_rate: fails')
-        except LogosRPCError as error:
-            print(error)
-
-
-        print("fee_rate: decimal")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='TEST3',
-                name='testcoin3',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["burn","distribute"]}],
-                settings=["revoke"],
-                fee_rate='1.5'
-            )
-            print(created)
-            self.nodes[0].process(created['request'])
-            print('fee_rate: fails')
-        except LogosRPCError as error:
-            print(error)
-        
-        print("fee_rate: negative")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='TEST3',
-                name='testcoin3',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["burn","distribute"]}],
-                settings=["revoke"],
-                fee_rate='-39'
-            )
-            print(created)
-            self.nodes[0].process(created['request'])
-            print('fee_rate: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        '''
-        print("fee_rate: empty")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='TEST3',
-                name='testcoin3',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["burn","distribute"]}],
-                settings=["revoke"],
-                fee_rate=''
-            )
-            print(created)
-            self.nodes[0].process(created['request'])
-            print('fee_rate: fails')
-        except LogosRPCError as error:
-            print(error)   
-        '''
-        '''
-        print("settings: empty")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='TEST3',
-                name='testcoin3',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["burn","distribute"]}]
-            )
-            print(created)
-            self.nodes[0].process(created['request'])
-            print('fee_rate: fails')
-        except LogosRPCError as error:
-            print(error)   
-        '''
-        print("settings: incorrect")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                settings=['distribute'],
-                symbol='TEST3',
-                name='testcoin3',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["burn","distribute"]}]
-            )
-            print(created)
-            self.nodes[0].process(created['request'])
-            print('fee_rate: fails')
-        except LogosRPCError as error:
-            print(error)
-        '''
-        print("settings: duplicate")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                settings=['revoke', 'revoke'],
-                symbol='TEST3',
-                name='testcoin3',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["burn","distribute"]}]
-            )
-            print(created)
-            self.nodes[0].process(created['request'])
-            print('fee_rate: fails')
-        except LogosRPCError as error:
-            print(error) 
-        '''
-        '''
-        print("controllers: empty")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='TEST3',
-                name='testcoin3',
-                controllers=[],
-            )
-            print(created)
-            self.nodes[0].process(created['request'])
-            print('fee_rate: fails')
-        except LogosRPCError as error:
-            print(error)
-        '''
-
-        print("controllers: no account")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='TEST3',
-                name='testcoin3',
-                controllers=[{"privileges": ["burn","distribute"]}],
-            )
-            print(created)
-            self.nodes[0].process(created['request'])
-            print('fee_rate: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        print("controllers: no privileges")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='TEST3',
-                name='testcoin3',
-                controllers=[{"account":self.account_list[1]['account']}],
-            )
-            print(created)
-            self.nodes[0].process(created['request'])
-            print('fee_rate: fails')
-        except LogosRPCError as error:
-            print(error)
-        
-
-        print("controllers: no privileges")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='TEST3',
-                name='testcoin3',
-                controllers=[{"account":self.account_list[1]['account']}],
-            )
-            print(created)
-            self.nodes[0].process(created['request'])
-            print('fee_rate: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        print("controllers: invalid privileges")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='TEST3',
-                name='testcoin3',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["token_send", "burn","distribute"]}],
-            )
-            print(created)
-            self.nodes[0].process(created['request'])
-            print('fee_rate: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        '''
-        print("controllers: duplicate privileges")
-        try:
-            created = self.nodes[0].block_create_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                symbol='TEST3',
-                name='testcoin3',
-                controllers=[{"account":self.account_list[1]['account'], "privileges": ["burn", "burn","distribute"]}],
-            )
-            print(created)
-            self.nodes[0].process(created['request'])
-            print('fee_rate: fails')
-        except LogosRPCError as error:
-            print(error)
-        '''
-        
-
-    def test_additional_issuance_illegal(self):
-        prev = self.nodes[0].account_info(self.account_list[1]['account'])['frontier']
-        print("creating valid token account")
-        created = self.nodes[0].block_create_issuance(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            symbol='TEST3',
-            name='testcoin3',
-            controllers=[{"account":self.account_list[1]['account'], "privileges": ["issuance", "burn","distribute"]},
-            {"account":self.account_list[2]['account'], "privileges": ["burn","distribute"]}],
-            settings=["revoke", "issuance"]
+        #================================================================
+        # TOKEN WITH INSUFFICIENT FEES
+        #================================================================
+        accnt_main_info = self.nodes[0].account_info(accnt_main['account'])
+        d_id = designated_delegate(accnt_main['public'], accnt_main_info['frontier'])
+        created = self.nodes[d_id].block_create_issuance(
+            private_key=accnt_main['private'],
+            previous=accnt_main_info['frontier'],
+            fee_type='flat',
+            fee_rate='10',
+            symbol='POOR',
+            name='test_token-logos_poor',
+            controllers=[{"account":accnt_main['account'], "privileges": ["distribute", "burn", "issuance", "withdraw_fee", "withdraw_logos", "revoke", "update_issuer_info", "change_freeze", "update_controller", "change_modify_freeze", "freeze", "adjust_fee"]}],
+            settings=["revoke", "issuance", "modify_freeze", "freeze", "adjust_fee"],
         )
-        print(created)
+        self.nodes[d_id].process(created['request'])
+        if not self.wait_for_requests_persistence([created['hash']]):
+            sys.stderr.write('Stopped at funding account')
         coin = eval(created['request'])
-        self.nodes[0].process(created['request'])
-
-        try:
-            print("issue_additional: empty amount")
-            created = self.nodes[0].block_create_additional_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                amount="",
-                token_id=coin['token_id']
-            )
-            
-            self.nodes[0].process(created['request'])
-            print('issue_additional: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("issue_additional: decimal amount")
-            created = self.nodes[0].block_create_additional_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                amount="123.123",
-                token_id=coin['token_id']
-            )
-            
-            self.nodes[0].process(created['request'])
-            print('issue_additional: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("issue_additional: negative amount")
-            created = self.nodes[0].block_create_additional_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                amount="-1000",
-                token_id=coin['token_id']
-            )
-            
-            self.nodes[0].process(created['request'])
-            print('issue_additional: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("issue_additional: max amount")
-            created = self.nodes[0].block_create_additional_issuance(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                amount="350000000000000000000000000000000000000",
-                token_id=coin['token_id']
-            )
-            
-            self.nodes[0].process(created['request'])
-            print('issue_additional: fails')
-        except LogosRPCError as error:
-            print(error)
-            
-        try:
-            print("issue_additional: no privilege controller")
-            created = self.nodes[0].block_create_additional_issuance(
-                key=self.account_list[2]['private'],
-                previous=prev,
-                amount="1000",
-                token_id=coin['token_id']
-            )
-            
-            self.nodes[0].process(created['request'])
-            print('issue_additional: fails')
-        except LogosRPCError as error:
-            print(error)
-
-    def test_change_setting(self):
-        prev = self.nodes[0].account_info(self.account_list[1]['account'])['frontier']
-        print("creating valid token account")
-        created = self.nodes[0].block_create_issuance(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            symbol='TEST3',
-            name='testcoin3',
-            controllers=[{"account":self.account_list[1]['account'], "privileges": ["issuance", "burn","distribute", "change_issuance"]},
-            {"account":self.account_list[2]['account'], "privileges": ["burn","distribute"]}],
-            settings=["revoke", "modify_issuance"]
+        token_account = qlmdb3.toaccount(qlmdb3.unhexlify(coin['token_id']))
+        token_poor = {"token_id":coin['token_id'], "account":token_account}
+        
+        gen_info = self.nodes[0].account_info()
+        gen_prev = gen_info['frontier']
+        d_id = designated_delegate(g_pub, gen_prev)
+        created = self.nodes[0].block_create(
+                previous=gen_prev,
+                txns=[{"destination":token_account, "amount":eval(MIN_FEE)-1}]
         )
-        print(created)
+        self.nodes[d_id].process(created['request'])
+        if not self.wait_for_requests_persistence([created['hash']]):
+            sys.stderr.write('Stopped at funding account')
+
+        #================================================================
+        # TOKEN WITH NO SETTINGS
+        #================================================================
+        accnt_main_info = self.nodes[0].account_info(accnt_main['account'])
+        d_id = designated_delegate(accnt_main['public'], accnt_main_info['frontier'])
+        created = self.nodes[d_id].block_create_issuance(
+            private_key=accnt_main['private'],
+            previous=accnt_main_info['frontier'],
+            fee_type='flat',
+            fee_rate='10',
+            symbol='SETT',
+            name='test_token-no_settings',
+            controllers=[{"account":accnt_main['account'], "privileges": ["distribute", "burn", "issuance", "withdraw_fee", "withdraw_logos", "revoke", "update_issuer_info", "change_freeze", "update_controller", "change_modify_freeze", "freeze", "adjust_fee"]}],
+            settings=[],
+        )
+        self.nodes[d_id].process(created['request'])
+        if not self.wait_for_requests_persistence([created['hash']]):
+            sys.stderr.write('Stopped at funding account')
         coin = eval(created['request'])
-        self.nodes[0].process(created['request'])
+        token_account = qlmdb3.toaccount(qlmdb3.unhexlify(coin['token_id']))
+        token_nosetting = {"token_id":coin['token_id'], "account":token_account}
+        
+        gen_info = self.nodes[0].account_info()
+        gen_prev = gen_info['frontier']
+        d_id = designated_delegate(g_pub, gen_prev)
+        created = self.nodes[0].block_create(
+                previous=gen_prev,
+                txns=[{"destination":token_account, "amount":"30000000000000000000000000000000"}]
+        )
+        self.nodes[d_id].process(created['request'])
+        if not self.wait_for_requests_persistence([created['hash']]):
+            sys.stderr.write('Stopped at funding account')
+        
+        
+        # TEST TOKEN ISSUANCE
+        test_results.append(all(self.illegal_token_issuance(accnt_main, accnt_poor)))
 
+        # TEST TOKEN ISSUE ADDITIONAL
+        test_results.append(all(self.illegal_issue_additional(accnt_main, token_main, token_poor, token_nosetting)))
+
+        # TEST TOKEN CHANGE SETTING
+        test_results.append(all(self.illegal_change_setting(accnt_main, token_main, token_poor)))
+
+        # TEST TOKEN IMMUTE SETTING
+        #test_results.append(all(self.illegal_immute_setting(accnt_main, token_main, token_poor, token_nosetting)))
+
+        # TEST TOKEN REVOKE
+        #test_results.append(all(self.illegal_revoke(accnt_main, token_main, token_poor, token_nosetting)))
+
+        # TEST TOKEN ADJUST USER STATUS
+        #test_results.append(all(self.illegal_adjust_user_status(accnt_main, token_main, token_poor, token_nosetting)))
+
+        # TEST TOKEN ADJUST FEE
+        test_results.append(all(self.illegal_adjust_fee(accnt_main, token_main, token_poor, token_nosetting)))
+
+        # TEST TOKEN UPDATE ISSUER INFO
+        test_results.append(all(self.illegal_update_issuer_info(accnt_main, token_main, token_poor)))
+
+        # TEST TOKEN UPDATE CONTROLLER
+        test_results.append(all(self.illegal_update_controller(accnt_main, token_main, token_poor)))
+
+        # TEST TOKEN BURN
+        test_results.append(all(self.illegal_burn(accnt_main, token_main, token_poor)))
+
+        # TEST TOKEN DISTRIBUTE
+        test_results.append(all(self.illegal_distribute(accnt_main, token_main, token_poor)))
+
+        # TEST TOKEN WITHDRAW FEE
+        #test_results.append(all(self.illegal_withdraw_fee(accnt_main, token_main, token_poor)))
+
+        # TEST TOKEN WITHDRAW LOGOS
+        test_results.append(all(self.illegal_withdraw_logos(accnt_main, token_main, token_poor)))
+
+        # TEST TOKEN SEND
+        #test_results.append(all(self.illegal_token_send(accnt_main, token_main, accnt_poor)))
+        
+        print(all(test_results))
+        return(all(test_results))
+        
+    #################################################################################
+    # ILLEGAL TOKEN ISSUANCE
+    # On Logos account send chain
+    #################################################################################
+    def illegal_token_issuance(self, accnt_main, accnt_poor):
+        results = []
+        
+        ## INSUFFICIENT FEE IN ACCOUNT BALANCE
+        poor_info = self.nodes[0].account_info(accnt_poor['account'])
+        d_id = designated_delegate(accnt_poor['public'], poor_info['frontier'])
         try:
-            print("change_setting: illegal setting")
-            created = self.nodes[0].block_create_change_setting(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                value="True",
-                setting="distribute",
-                token_id=coin['token_id']
+            created = self.nodes[d_id].block_create_issuance(
+                private_key=accnt_poor['private'],
+                previous=poor_info['frontier'],
+                symbol='ISSUE',
+                name='test_token-issuance',
+                controllers=[{"account":accnt_poor['account'], "privileges": ["distribute"]}],
+                settings=[]
             )
-            
-            self.nodes[0].process(created['request'])
-            print('change_setting: fails')
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN ISSUANCE FAILS: account creating token has insufficient logos fees but succeeded in issuance")
+            results.append(False)
         except LogosRPCError as error:
-            print(error)
+            results.append(True)
+            
+        main_info = self.nodes[0].account_info(accnt_main['account'])
+        main_prev = main_info['frontier']
+        d_id = designated_delegate(accnt_main['public'], main_prev)
 
+        ## INSUFFICIENT REQUEST FEE
         try:
-            print("change_setting: empty setting")
-            created = self.nodes[0].block_create_change_setting(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                value="True",
-                setting="",
-                token_id=coin['token_id']
+            created = self.nodes[d_id].block_create_issuance(
+                private_key=accnt_main['private'],
+                previous=main_info['frontier'],
+                symbol='ISSUE',
+                name='test_token-issuance',
+                controllers=[{"account":accnt_main['account'], "privileges": ["distribute"]}],
+                settings=[],
+                fee=eval(MIN_FEE)-1
             )
-            
-            self.nodes[0].process(created['request'])
-            print('change_setting: fails')
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN ISSUANCE FAILS: insufficient request fees succeeded")
+            results.append(False)
         except LogosRPCError as error:
-            print(error)
+            results.append(True)
+        
+            
+        ## MALFORMED SYMBOLS
+        for key, value in {'empty':'', 'long':'QWERTYUIO', 'illegal':'!SG'}.items():
+            try:
+                created = self.nodes[d_id].block_create_issuance(
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    symbol=value,
+                    name='test_token-issuance',
+                    controllers=[{"account":accnt_main['account'], "privileges": ["distribute"]}],
+                    settings=[]
+                )
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN ISSUANCE FAILS: symbol: {}".format(key))
+                results.append(False)
+            except LogosRPCError as error:
+                results.append(True)
 
-        try: #TODO: doesn't work (True must also be lowercase)
-            print("change_setting: capitalize setting")
-            created = self.nodes[0].block_create_change_setting(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                value="True",
-                setting="Issuance",
-                token_id=coin['token_id']
+        ## MALFORMED NAMES
+        for key, value in {'empty':'', 'long':'X'*129, 'illegal':'!token'}.items():
+            try:
+                created = self.nodes[d_id].block_create_issuance(
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    symbol='ISSUE',
+                    name=value,
+                    controllers=[{"account":accnt_main['account'], "privileges": ["distribute"]}],
+                    settings=[]
+                )
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN ISSUANCE FAILS: name: {}".format(key))
+                results.append(False)
+            except LogosRPCError as error:
+                results.append(True)
+
+        ## MALFORMED TOTAL SUPPLY
+        for key, value in {'empty':'', 'negative':'-12000000', 'illegal':'abc'}.items():
+            try:
+                created = self.nodes[d_id].block_create_issuance(
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    symbol='ISSUE',
+                    name='test_token-issuance',
+                    total_supply=value,
+                    controllers=[{"account":accnt_main['account'], "privileges": ["distribute"]}],
+                    settings=[]
+                )
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN ISSUANCE FAILS: total supply: {}".format(key))
+                results.append(False)
+            except LogosRPCError as error:
+                results.append(True)
+            
+        ## MALFORMED FEE TYPE
+        for key, value in {'empty':'', 'illegal':'fake'}.items():
+            try:
+                created = self.nodes[d_id].block_create_issuance(
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    fee_type=value,
+                    fee_rate=0,
+                    symbol='ISSUE',
+                    name='test_token-issuance',
+                    controllers=[{"account":accnt_main['account'], "privileges": ["distribute"]}],
+                    settings=[]
+                )
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN ISSUANCE FAILS: fee type: {}".format(key))
+                results.append(False)
+            except LogosRPCError as error:
+                results.append(True)
+                    
+        ## MALFORMED FEE RATE FOR PERCENTAGE
+        for key, value in {'decimal':'1.5', 'above100':'101', 'negative':'-39'}.items(): ## EMPTY WORKS???
+            try:
+                created = self.nodes[d_id].block_create_issuance(
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    fee_type='percentage',
+                    fee_rate=value,
+                    symbol='ISSUE',
+                    name='test_token-issuance',
+                    controllers=[{"account":accnt_main['account'], "privileges": ["distribute"]}],
+                    settings=[]
+                )
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN ISSUANCE FAILS: percentage fee rate: {}".format(key))
+                results.append(False)
+            except LogosRPCError as error:
+                results.append(True)
+
+        ## MALFORMED FEE RATE FOR FLAT
+        for key, value in {'decimal':'1.5', 'negative':'-39'}.items(): ## EMPTY WORKS???
+            try:
+                created = self.nodes[d_id].block_create_issuance(
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    fee_type='flat',
+                    fee_rate=value,
+                    symbol='ISSUE',
+                    name='test_token-issuance',
+                    controllers=[{"account":accnt_main['account'], "privileges": ["distribute"]}],
+                    settings=[]
+                )
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN ISSUANCE FAILS: flat fee rate: {}".format(key))
+                results.append(False)
+            except LogosRPCError as error:
+                results.append(True)
+                               
+        ## MALFORMED SETTINGS
+        for key, value in {'illegal':'distribute'}.items():
+            try:
+                created = self.nodes[d_id].block_create_issuance(
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    symbol='ISSUE',
+                    name='test_token-issuance',
+                    controllers=[{"account":accnt_main['account'], "privileges": ["distribute"]}],
+                    settings=[value]
+                )
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN ISSUANCE FAILS: settings: {}".format(key))
+                results.append(False)
+            except LogosRPCError as error:
+                results.append(True)
+
+        ## MALFORMED CONTROLLERS TODO: EXCESSIVE CONTROLLERS
+        controllers = {'no account':[{'privileges':['distribute','burn']}],
+                       'no privileges':[{'account':accnt_main['account']}],
+                       'illegal':[{'account':accnt_main['account'], 'privileges':['token_send', 'distribute']}],
+                       'excessive':[{"account":accnt_main['account'], "privileges": ["distribute"]},
+                                    {"account":self.account_list[1]['account'], "privileges":[]},
+                                    {"account":self.account_list[2]['account'], "privileges":[]},
+                                    {"account":self.account_list[3]['account'], "privileges":[]},
+                                    {"account":self.account_list[4]['account'], "privileges":[]},
+                                    {"account":self.account_list[5]['account'], "privileges":[]},
+                                    {"account":self.account_list[6]['account'], "privileges":[]},
+                                    {"account":self.account_list[7]['account'], "privileges":[]},
+                                    {"account":self.account_list[8]['account'], "privileges":[]},
+                                    {"account":self.account_list[9]['account'], "privileges":[]},
+                                    {"account":self.account_list[10]['account'], "privileges":[]}]
+        }
+        
+        for key, value in controllers.items():
+            try:
+                created = self.nodes[d_id].block_create_issuance(
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    symbol='ISSUE',
+                    name='test_token-issuance',
+                    controllers=value
+                )
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN ISSUANCE FAILS: controllers: {}".format(key))
+                results.append(False)
+            except LogosRPCError as error:
+                results.append(True)
+            
+        return results
+
+    #################################################################################
+    # ILLEGAL TOKEN ISSUE ADDITIONAL
+    # On Token account send chain
+    #################################################################################
+    def illegal_issue_additional(self, accnt_main, token_main, token_poor, token_nosetting):
+        results = []
+                    
+        main_info = self.nodes[0].account_info(accnt_main['account'])
+        main_prev = main_info['frontier']
+        d_id = designated_delegate(accnt_main['public'], main_prev)
+
+        ## INSUFFICIENT FEE IN TOKEN ACCOUNT
+        try:
+            created = self.nodes[d_id].block_create_issue_additional(
+                private_key=accnt_main['private'],
+                previous=main_prev,
+                token_id=token_poor['token_id'],
+                amount='100000000'
             )
-            
-            self.nodes[0].process(created['request'])
-            print('change_setting: fails')
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN ISSUE ADDITIONAL FAILS: token has insufficient logos fees but succeeded in issue additional")
+            results.append(False)
         except LogosRPCError as error:
-            print(error)
+            results.append(True)
 
-        try: # come back to this
-            print("change_setting: capitalize setting")
+        ## INSUFFICIENT REQUEST FEE
+        try:
+            created = self.nodes[d_id].block_create_issue_additional(
+                private_key=accnt_main['private'],
+                previous=main_prev,
+                token_id=token_main['token_id'],
+                amount='100000000',
+                fee=eval(MIN_FEE)-1
+            )
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN ISSUE ADDITIONAL FAILS: insufficient request fee succeeded")
+            results.append(False)
+        except LogosRPCError as error:
+            results.append(True)
+
+        ## MALFORMED AMOUNT
+        for key, value in {'empty':'', 'decimal':'123.123', 'negative':'-1000', 'max amount':'350000000000000000000000000000000000000'}.items():
+            try:
+                created = self.nodes[0].block_create_issue_additional(
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    amount=value,
+                    token_id=token_main['token_id']
+                )
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN ISSUE ADDITIONAL FAILS: amount: {}".format(key))
+                results.append(False)
+            except LogosRPCError as error:
+                results.append(True)
+
+        ## NO PRIVILEGE CONTROLLER
+        nopriv = self.account_list[1]
+        nopriv_info = self.nodes[0].account_info(nopriv['account'])
+        nopriv_prev = nopriv_info['frontier']
+        d_id = designated_delegate(nopriv['public'], nopriv_prev)
+        
+        try:
+            created = self.nodes[d_id].block_create_issue_additional(
+                private_key=nopriv['private'],
+                previous=nopriv_prev,
+                amount='100000',
+                token_id=token_main['token_id']
+            )
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN ISSUE ADDITIONAL FAILS: Controller w/o privilege able to issue additional")
+            results.append(False)
+        except LogosRPCError as error:
+            results.append(True)
+
+        ## NO SETTING
+        main_info = self.nodes[0].account_info(accnt_main['account'])
+        main_prev = main_info['frontier']
+        d_id = designated_delegate(nopriv['public'], nopriv_prev)
+        
+        try:
+            created = self.nodes[d_id].block_create_issue_additional(
+                private_key=accnt_main['private'],
+                previous=main_prev,
+                amount='100000',
+                token_id=token_nosetting['token_id']
+            )
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN ISSUE ADDITIONAL FAILS: Token w/o setting able to issue additional")
+            results.append(False)
+        except LogosRPCError as error:
+            results.append(True)
+
+        return results
+
+    #################################################################################
+    # ILLEGAL TOKEN CHANGE SETTING
+    # On Token account send chain
+    #################################################################################
+    def illegal_change_setting(self, accnt_main, token_main, token_poor):
+        results = []
+        
+        main_info = self.nodes[0].account_info(accnt_main['account'])
+        main_prev = main_info['frontier']
+        d_id = designated_delegate(accnt_main['public'], main_prev)
+
+        ## INSUFFICIENT FEE IN TOKEN ACCOUNT
+        try:
             created = self.nodes[0].block_create_change_setting(
-                key=self.account_list[1]['private'],
-                previous=prev,
+                private_key=accnt_main['private'],
+                previous=main_prev,
                 value="true",
                 setting="issuance",
-                token_id=coin['token_id']
+                token_id=token_poor['token_id']
             )
-            
-            self.nodes[0].process(created['request'])
-            print('change_setting: fails')
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN CHANGE SETTING FAILS: token has insufficient logos fees but succeeded in issue additional")
+            results.append(False)
         except LogosRPCError as error:
-            print(error)
+            results.append(True)
         
-        try: # come back to this
-            print("change_setting: malformed value")
+        ## INSUFFICIENT REQUEST FEE
+        try:
             created = self.nodes[0].block_create_change_setting(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                value="0",
+                private_key=accnt_main['private'],
+                previous=main_prev,
+                value="true",
                 setting="issuance",
-                token_id=coin['token_id']
+                token_id=token_main['token_id'],
+                fee=eval(MIN_FEE)-1
             )
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN CHANGE SETTING FAILS: insufficient request fee succeeded")
+            results.append(False)
+        except LogosRPCError as error:
+            results.append(True)
+        
             
-            self.nodes[0].process(created['request'])
-            print('change_setting: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try: # come back to this
-            print("change_setting: no value")
-            created = self.nodes[0].block_create_change_setting(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                value="",
-                setting="issuance",
-                token_id=coin['token_id']
-            )
-            
-            self.nodes[0].process(created['request'])
-            print('change_setting: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        
-    def test_immute_setting(self):
-        prev = self.nodes[0].account_info(self.account_list[1]['account'])['frontier']
-        print("creating valid token account")
-        created = self.nodes[0].block_create_issuance(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            symbol='TSET',
-            name='testimmutesetting',
-            controllers=[{"account":self.account_list[1]['account'], "privileges": ["distribute", "issuance", "change_modify_issuance", "revoke", "change_modify_revoke", "freeze", "change_modify_freeze", "change_modify_adjust_fee", "change_modify_whitelist"]},
-            {"account":self.account_list[2]['account'], "privileges": ["distribute"]}],
-            settings=["revoke", "issuance", "modify_issuance", "modify_revoke", "freeze", "modify_freeze", "modify_adjust_fee", "modify_whitelist"]
-        )
-        print(created)
-        coin = eval(created['request'])
-        prev = created['hash']
-        token_account = qlmdb3.toaccount(qlmdb3.unhexlify(coin['token_id']))
-        self.nodes[0].process(created['request'])
-        sleep(10)
-
-        print('FUND TOKENACCOUNT WITH LOGOS')
-        gen_info = self.nodes[0].account_info()
-        sleep(6)
-        
-        created = self.nodes[0].block_create(
-            previous=gen_info['frontier'],
-            transactions=[{"destination":token_account, "amount":"1000000000000000000000000000000000000"}]
-        )
-        
-        self.nodes[0].process(created['request'])
-        sleep(10)
-        try:
-            print("immute setting: un immutable setting")
-            created = self.nodes[0].block_create_immute_setting(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                setting='distribute'
-            )
-            self.nodes[0].process(created['request'])
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("immute setting: wrong setting")
-            created = self.nodes[0].block_create_immute_setting(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                setting='modify_issuance'
-            )
-            self.nodes[0].process(created['request'])
-            print('immute setting: fail')
-        except LogosRPCError as error:
-            print(error)
-        
-        try:
-            print("immute setting: empty setting")
-            created = self.nodes[0].block_create_immute_setting(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                setting=''
-            )
-            self.nodes[0].process(created['request'])
-            print('immute setting: fail')
-        except LogosRPCError as error:
-            print(error)
-        ''' works correctly
-        try:
-            print("immute setting: capitalize setting")
-            created = self.nodes[0].block_create_immute_setting(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                setting='Issuance'
-            )
-            self.nodes[0].process(created['request'])
-            print('immute setting: fail')
-        except LogosRPCError as error:
-            print(error)
-        '''
-        try:
-            print("immute setting: no change privilege")
-            created = self.nodes[0].block_create_immute_setting(
-                key=self.account_list[2]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                setting='issuance'
-            )
-            self.nodes[0].process(created['request'])
-            print('immute setting: fail')
-        except LogosRPCError as error:
-            print(error)
-        try:
-            print("immute setting: no change privilege")
-            created = self.nodes[0].block_create_immute_setting(
-                key=self.account_list[2]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                setting='revoke'
-            )
-            self.nodes[0].process(created['request'])
-        except LogosRPCError as error:
-            print(error)
-        try:
-            print("immute setting: no change privilege")
-            created = self.nodes[0].block_create_immute_setting(
-                key=self.account_list[2]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                setting='freeze'
-            )
-            self.nodes[0].process(created['request'])
-            print('immute setting: fail')
-        except LogosRPCError as error:
-            print(error)
-        try:
-            print("immute setting: no change privilege")
-            created = self.nodes[0].block_create_immute_setting(
-                key=self.account_list[2]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                setting='adjust_fee'
-            )
-            self.nodes[0].process(created['request'])
-        except LogosRPCError as error:
-            print(error)
-        try:
-            print("immute setting: no change privilege")
-            created = self.nodes[0].block_create_immute_setting(
-                key=self.account_list[2]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                setting='whitelist'
-            )
-            self.nodes[0].process(created['request'])
-            print('immute setting: fail')
-        except LogosRPCError as error:
-            print(error)
-
-    def test_revoke(self):
-        prev = self.nodes[0].account_info(self.account_list[1]['account'])['frontier']
-        print("creating valid token account")
-        created = self.nodes[0].block_create_issuance(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            symbol='TREVOKE',
-            name='testrevoke',
-            controllers=[{"account":self.account_list[1]['account'], "privileges": ["issuance", "burn","distribute", "revoke"]},
-            {"account":self.account_list[2]['account'], "privileges": ["distribute"]}],
-            settings=["revoke", "modify_issuance"]
-        )
-        print(created)
-        coin = eval(created['request'])
-        prev = created['hash']
-        token_account = qlmdb3.toaccount(qlmdb3.unhexlify(coin['token_id']))
-        self.nodes[0].process(created['request'])
-        sleep(10)
-
-        print('FUND TOKENACCOUNT WITH LOGOS')
-        gen_info = self.nodes[0].account_info()
-        sleep(6)
-        
-        created = self.nodes[0].block_create(
-            previous=gen_info['frontier'],
-            transactions=[{"destination":token_account, "amount":"1000000000000000000000000000000000000"}]
-        )
-        
-        self.nodes[0].process(created['request'])
-
-        sleep(10)
-        
-        print("valid distribute")
-        created = self.nodes[0].block_create_tokreq(
-            type="distribute",
-            key=self.account_list[1]['private'],
-            previous=prev,
-            token_id=coin['token_id'],
-            transaction={"destination" : self.account_list[2]['account'], "amount": "100000000000000" }
-        )
-        self.nodes[0].process(created['request'])
-
-        sleep(10)
-        prev = created['hash']
-        
-        try:
-            print("revoke: empty source")
-            created = self.nodes[0].block_create_revoke(
-                type="revoke",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                source="",
-                transaction={"destination" : self.account_list[1]['account'], "amount": "1000" }
-            )
-            self.nodes[0].process(created['request'])
-            print('revoke: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("revoke: publickey source")
-            created = self.nodes[0].block_create_revoke(
-                type="revoke",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                source=self.account_list[2]['public'],
-                transaction={"destination" : self.account_list[1]['account'], "amount": "1000" }
-            )
-            self.nodes[0].process(created['request'])
-            print('revoke: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("revoke: empty destination")
-            created = self.nodes[0].block_create_revoke(
-                type="revoke",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                source=self.account_list[2]['account'],
-                transaction={"destination" : "", "amount": "1000" }
-            )
-            self.nodes[0].process(created['request'])
-            print('revoke: fails')
-        except LogosRPCError as error:
-            print(error)
-            
-        try:
-            print("revoke: publickey destination")
-            created = self.nodes[0].block_create_revoke(
-                type="revoke",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                source=self.account_list[2]['account'],
-                transaction={"destination" : self.account_list[1]['public'], "amount": "1000" }
-            )
-            self.nodes[0].process(created['request'])
-            print('revoke: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("revoke: no amount")
-            created = self.nodes[0].block_create_revoke(
-                type="revoke",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                source=self.account_list[2]['account'],
-                transaction={"destination" : self.account_list[1]['account'], "amount": "" }
-            )
-            self.nodes[0].process(created['request'])
-            print('revoke: fails')
-        except LogosRPCError as error:
-            print(error)
-        '''
-        try:
-            print("revoke: decimal amount")
-            created = self.nodes[0].block_create_revoke(
-                type="revoke",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                source=self.account_list[2]['account'],
-                transaction={"destination" : self.account_list[1]['account'], "amount": "1000.12" }
-            )
-            self.nodes[0].process(created['request'])
-            print('revoke: fails')
-        except LogosRPCError as error:
-            print(error)
-        '''
-        try:
-            print("revoke: negative amount")
-            created = self.nodes[0].block_create_revoke(
-                type="revoke",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                source=self.account_list[2]['account'],
-                transaction={"destination" : self.account_list[1]['account'], "amount": "-1000" }
-            )
-            self.nodes[0].process(created['request'])
-            print('revoke: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("revoke: no privileges")
-            created = self.nodes[0].block_create_revoke(
-                type="revoke",
-                key=self.account_list[2]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                source=self.account_list[1]['account'],
-                transaction={"destination" : self.account_list[2]['account'], "amount": "1000" }
-            )
-            self.nodes[0].process(created['request'])
-            print('revoke: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("revoke: too much")
-            created = self.nodes[0].block_create_revoke(
-                type="revoke",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                source=self.account_list[2]['account'],
-                transaction={"destination" : self.account_list[1]['account'], "amount": "10000000000000000000000000" }
-            )
-            self.nodes[0].process(created['request'])
-            print('revoke: fails')
-        except LogosRPCError as error:
-            print(error)
-            
-
-            
-    def test_adjust_user_status(self):
-        prev = self.nodes[0].account_info(self.account_list[1]['account'])['frontier']
-        print("creating valid token account")
-        created = self.nodes[0].block_create_issuance(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            symbol='TADJUSER',
-            name='testadjustuserstatus',
-            controllers=[{"account":self.account_list[1]['account'], "privileges": ["withdraw_fee", "issuance", "burn","distribute", "whitelist", "freeze"]},
-            {"account":self.account_list[2]['account'], "privileges": ["revoke"]}],
-            settings=["revoke", "modify_issuance", "whitelist", "freeze"]
-        )
-        coin = eval(created['request'])
-        prev = created['hash']
-        token_account = qlmdb3.toaccount(qlmdb3.unhexlify(coin['token_id']))
-        self.nodes[0].process(created['request'])
-        sleep(10)
-
-        gen_info = self.nodes[0].account_info()
-        sleep(6)
-        created = self.nodes[0].block_create(
-            previous=gen_info['frontier'],
-            transactions=[{"destination":token_account, "amount":"1000000000000000000000000000000000000"}]
-        )
-        self.nodes[0].process(created['request'])
-
-        sleep(10)
-        
-        for key, value in {'empty':'','publickey':self.account_list[2]['public']}.items():
+        ## MALFORMED SETTING
+        for key, value in {'empty':'', 'illegal':'distribute'}.items():
             try:
-                print("adjust user status: {} destination".format(key))
-                created = self.nodes[0].block_create_adjust_user_status(
-                    key=self.account_list[1]['private'],
-                    previous=prev,
-                    token_id=coin['token_id'],
-                    status="whitelisted",
-                    account=value
+                created = self.nodes[d_id].block_create_change_setting(
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    value="true",
+                    setting=value,
+                    token_id=token_main['token_id']
                 )
-                self.nodes[0].process(created['request'])
-                print("adjust user status: fail")
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN CHANGE SETTING FAILS: setting: {}".format(key))
+                results.append(False)
             except LogosRPCError as error:
-                print(error)
+                results.append(True)
 
-        for key, value in {'empty':'', 'illegal':'unwhitelisted'}.items(): #capital works
+        ## MALFORMED VALUE
+        for key, value in {'empty':'', 'illegal':'1'}.items():
             try:
-                print("adjust user status: {} status".format(key))
-                created = self.nodes[0].block_create_adjust_user_status(
-                    key=self.account_list[1]['private'],
-                    previous=prev,
-                    token_id=coin['token_id'],
-                    status=value,
-                    account=self.account_list[1]['account']
+                created = self.nodes[d_id].block_create_change_setting(
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    value=value,
+                    setting='whitelist',
+                    token_id=token_main['token_id']
                 )
-                self.nodes[0].process(created['request'])
-                print("adjust user status: fail")
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN CHANGE SETTING FAILS: value: {}".format(key))
+                results.append(False)
             except LogosRPCError as error:
-                print(error)
+                results.append(True)
 
-        for item in ['whitelisted', 'frozen']:
+        ## NO PRIVILEGE
+        nopriv = self.account_list[1]
+        nopriv_info = self.nodes[0].account_info(nopriv['account'])
+        nopriv_prev = nopriv_info['frontier']
+        d_id = designated_delegate(nopriv['public'], nopriv_prev)
+
+        try:
+            created = self.nodes[d_id].block_create_change_setting(
+                private_key=nopriv['private'],
+                previous=nopriv_prev,
+                value="true",
+                setting=value,
+                token_id=token_main['token_id']
+            )
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN CHANGE SETTING FAILS: Controller w/o privilege able to change setting")
+            results.append(False)
+        except LogosRPCError as error:
+            results.append(True)
+        
+        return results
+
+    #################################################################################
+    # ILLEGAL TOKEN IMMUTE SETTING
+    # On Token account send chain
+    #################################################################################
+    def illegal_immute_setting(self, accnt_main, token_main, token_poor, token_nosetting):
+        results = []
+
+        return results
+    
+    #################################################################################
+    # ILLEGAL TOKEN REVOKE
+    # On Token account send chain
+    #################################################################################
+    def illegal_revoke(self, accnt_main, token_main, token_poor, token_nosetting):
+        results = []
+
+        return results
+
+    #################################################################################
+    # ILLEGAL TOKEN ADJUST USER STATUS
+    # On Token account send chain
+    #################################################################################
+    def illegal_adjust_user_status(self, accnt_main, token_main, token_poor, token_nosetting):
+        results = []
+
+        return results
+
+    #################################################################################
+    # ILLEGAL TOKEN ADJUST FEE
+    # On Token account send chain
+    #################################################################################
+    def illegal_adjust_fee(self, accnt_main, token_main, token_poor, token_nosetting):
+        results = []
+
+        main_info = self.nodes[0].account_info(accnt_main['account'])
+        main_prev = main_info['frontier']
+        d_id = designated_delegate(accnt_main['public'], main_prev)
+
+        ## INSUFFICIENT FEE IN TOKEN ACCOUNT
+        try:
+            created = self.nodes[d_id].block_create_adjust_fee(
+                private_key=accnt_main['private'],
+                previous=main_prev,
+                token_id=token_poor['token_id'],
+                fee_type='percentage',
+                fee_rate='10'
+            )
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN ADJUST FEE FAILS: token has insufficient logos fees but succeeded in adjust fee")
+            results.append(False)
+        except LogosRPCError as _:
+            results.append(True)
+
+        ## INSUFFICIENT REQUEST FEE
+        try:
+            created = self.nodes[d_id].block_create_adjust_fee(
+                private_key=accnt_main['private'],
+                previous=main_prev,
+                token_id=token_main['token_id'],
+                fee_type='percentage',
+                fee_rate='10',
+                fee=eval(MIN_FEE)-1
+            )
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN ADJUST FEE FAILS: token has insufficient logos fees but succeeded in adjust fee")
+            results.append(False)
+        except LogosRPCError as _:
+            results.append(True)
+
+        ## MALFORMED FEE TYPE
+        for key, value in {'empty':'','illegal':'distribute'}.items():
             try:
-                print("adjust user status: no privilege {}".format(item))
-                created = self.nodes[0].block_create_adjust_user_status(
-                    key=self.account_list[2]['private'],
-                    previous=prev,
-                    token_id=coin['token_id'],
-                    status=item,
-                    account=self.account_list[1]['account']
-                )
-                self.nodes[0].process(created['request'])
-                print("adjust user status: fail")
-            except LogosRPCError as error:
-                print(error)
-
-        prev = self.nodes[0].account_info(self.account_list[1]['account'])['frontier']
-        created = self.nodes[0].block_create_issuance(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            symbol='TADJUSE1',
-            name='testadjustuserstatus1',
-            controllers=[{"account":self.account_list[1]['account'], "privileges": ["withdraw_fee", "issuance", "burn","distribute", "whitelist", "freeze"]},
-            {"account":self.account_list[2]['account'], "privileges": ["revoke"]}],
-            settings=["revoke"]
-        )
-        coin = eval(created['request'])
-        prev = created['hash']
-        token_account = qlmdb3.toaccount(qlmdb3.unhexlify(coin['token_id']))
-        self.nodes[0].process(created['request'])
-        sleep(10)
-
-        gen_info = self.nodes[0].account_info()
-        sleep(6)
-        created = self.nodes[0].block_create(
-            previous=gen_info['frontier'],
-            transactions=[{"destination":token_account, "amount":"1000000000000000000000000000000000000"}]
-        )
-        self.nodes[0].process(created['request'])
-        sleep(10)
-
-        for item in ['whitelisted', 'frozen']:
-            try:
-                print("adjust user status: no setting {}".format(item))
-                created = self.nodes[0].block_create_adjust_user_status(
-                    key=self.account_list[1]['private'],
-                    previous=prev,
-                    token_id=coin['token_id'],
-                    status=item,
-                    account=self.account_list[1]['account']
-                )
-                self.nodes[0].process(created['request'])
-                print("adjust user status: fail")
-            except LogosRPCError as error:
-                print(error)
-                
-    def test_adjust_fee(self):
-        prev = self.nodes[0].account_info(self.account_list[1]['account'])['frontier']
-        print("creating valid token account")
-        created = self.nodes[0].block_create_issuance(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            symbol='TADJFEE',
-            name='testadjustfee',
-            controllers=[{"account":self.account_list[1]['account'], "privileges": ["distribute", "adjust_fee"]},
-            {"account":self.account_list[2]['account'], "privileges": ["revoke"]}],
-            settings=["revoke", "adjust_fee"]
-        )
-        coin = eval(created['request'])
-        prev = created['hash']
-        token_account = qlmdb3.toaccount(qlmdb3.unhexlify(coin['token_id']))
-        self.nodes[0].process(created['request'])
-        sleep(10)
-
-        gen_info = self.nodes[0].account_info()
-        sleep(6)
-        created = self.nodes[0].block_create(
-            previous=gen_info['frontier'],
-            transactions=[{"destination":token_account, "amount":"1000000000000000000000000000000000000"}]
-        )
-        self.nodes[0].process(created['request'])
-        sleep(10)
-
-        for key, value in {'empty':'', 'not valid':'distribute', 'capitalized':'Percentage'}.items():
-            try:
-                print("adjust fee: {} fee_type".format(key))
-                created = self.nodes[0].block_create_adjust_fee(
-                    key=self.account_list[1]['private'],
-                    previous=prev,
-                    token_id=coin['token_id'],
+                created = self.nodes[d_id].block_create_adjust_fee(
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    token_id=token_main['token_id'],
                     fee_type=value,
                     fee_rate='10'
                 )
-                self.nodes[0].process(created['request'])
-                print("adjust fee: fail")
-            except LogosRPCError as error:
-                print(error)
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN ADJUST FEE FAILS: fee type: {}".format(key))
+                results.append(False)
+            except LogosRPCError as _:
+                results.append(True)
 
-        for key, value in {'empty':'', 'decimal':'50.1', 'negative':'-10', 'excessive':'101'}.items():
+        ## MALFORMED FEE RATE PERCENTAGE
+        for key, value in {'decimal':'1.5', 'above100':'101', 'negative':'-39'}.items():
             try:
-                print("adjust fee: {} fee_rate".format(key))
-                created = self.nodes[0].block_create_adjust_fee(
-                    key=self.account_list[1]['private'],
-                    previous=prev,
-                    token_id=coin['token_id'],
+                created = self.nodes[d_id].block_create_adjust_fee(
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    token_id=token_main['token_id'],
                     fee_type='percentage',
                     fee_rate=value
                 )
-                self.nodes[0].process(created['request'])
-                print("adjust fee: fail")
-            except LogosRPCError as error:
-                print(error)
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN ADJUST FEE FAILS: percentage fee rate: {}".format(key))
+                results.append(False)
+            except LogosRPCError as _:
+                results.append(True)
 
-        try:
-            print("adjust fee: no privilege")
-            created = self.nodes[0].block_create_adjust_fee(
-            key=self.account_list[2]['private'],
-                    previous=prev,
-                    token_id=coin['token_id'],
-                    fee_type='percentage',
-                    fee_rate='10'
-            )
-            self.nodes[0].process(created['request'])
-            print("adjust fee: fail")
-        except LogosRPCError as error:
-            print(error)
-
-        prev = self.nodes[0].account_info(self.account_list[1]['account'])['frontier']
-        print("creating valid token account")
-        created = self.nodes[0].block_create_issuance(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            symbol='TADJFEE',
-            name='testadjustfee',
-            controllers=[{"account":self.account_list[1]['account'], "privileges": ["distribute", "adjust_fee"]},
-            {"account":self.account_list[2]['account'], "privileges": ["revoke"]}],
-            settings=["revoke"]
-        )
-        coin = eval(created['request'])
-        prev = created['hash']
-        token_account = qlmdb3.toaccount(qlmdb3.unhexlify(coin['token_id']))
-        self.nodes[0].process(created['request'])
-        sleep(10)
-
-        gen_info = self.nodes[0].account_info()
-        sleep(6)
-        created = self.nodes[0].block_create(
-            previous=gen_info['frontier'],
-            transactions=[{"destination":token_account, "amount":"1000000000000000000000000000000000000"}]
-        )
-        self.nodes[0].process(created['request'])
-        sleep(10)
-        
-        try:
-            print("adjust fee: no setting")
-            created = self.nodes[0].block_create_adjust_fee(
-            key=self.account_list[1]['private'],
-                    previous=prev,
-                    token_id=coin['token_id'],
-                    fee_type='percentage',
-                    fee_rate='10'
-            )
-            self.nodes[0].process(created['request'])
-            print("adjust fee: fail")
-        except LogosRPCError as error:
-            print(error)
-
-    def test_update_issuer_info(self):
-        prev = self.nodes[0].account_info(self.account_list[1]['account'])['frontier']
-        print("creating valid token account")
-        created = self.nodes[0].block_create_issuance(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            symbol='TINFO',
-            name='testupinfo',
-            controllers=[{"account":self.account_list[1]['account'], "privileges": ["issuance", "burn","distribute", "update_issuer_info"]},
-            {"account":self.account_list[2]['account'], "privileges": ["distribute"]}],
-            settings=["revoke", "modify_issuance"]
-        )
-        print(created)
-        coin = eval(created['request'])
-        prev = created['hash']
-        self.nodes[0].process(created['request'])
-        sleep(10)
-        
-        try:
-            print("update issuer info: long info")
-            created = self.nodes[0].block_create_update_issuer_info(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                new_info="a"*512+"b"
-            )
-            self.nodes[0].process(created['request'])
-            print('update issuer info: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("update issuer info: no privileges")
-            created = self.nodes[0].block_create_update_issuer_info(
-                key=self.account_list[2]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                new_info="a"
-            )
-            self.nodes[0].process(created['request'])
-            print('update issuer info: fails')
-        except LogosRPCError as error:
-            print(error)
-        
-        
-    def test_update_controller(self):
-        prev = self.nodes[0].account_info(self.account_list[1]['account'])['frontier']
-        created = self.nodes[0].block_create_issuance(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            symbol='TUPCONT',
-            name='testupdatecontroller',
-            controllers=[{"account":self.account_list[1]['account'], "privileges": ["distribute", "update_controller"]},
-                         {"account":self.account_list[2]['account'], "privileges": ["revoke"]}],
-            settings=["revoke"]
-        )
-        coin = eval(created['request'])
-        prev = created['hash']
-        token_account = qlmdb3.toaccount(qlmdb3.unhexlify(coin['token_id']))
-        self.nodes[0].process(created['request'])
-        sleep(10)
-
-        gen_info = self.nodes[0].account_info()
-        sleep(6)
-        created = self.nodes[0].block_create(
-            previous=gen_info['frontier'],
-            transactions=[{"destination":token_account, "amount":"1000000000000000000000000000000000000"}]
-        )
-        self.nodes[0].process(created['request'])
-        sleep(10)
-
-        for key, value in {'empty':'','not valid':'delete','uppercase':'Add'}.items():
+        ## MALFORMED FEE RATE FLATE
+        for key, value in {'decimal':'1.5', 'negative':'-39'}.items():
             try:
-                print('update controller: {} action')
-                created = self.nodes[0].block_create_update_controller(
-                    key=self.account_list[1]['private'],
-                    previous=prev,
-                    action=value,
-                    token_id=coin['token_id'],
-                    controller={"account":self.account_list[2]['account'], "privileges":['distribute']}
+                created = self.nodes[d_id].block_create_adjust_fee(
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    token_id=token_main['token_id'],
+                    fee_type='flat',
+                    fee_rate=value
                 )
-                self.nodes[0].process(created['request'])
-                print('update controller: fail')
-            except LogosRPCError as error:
-                print(error)
-                
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN ADJUST FEE FAILS: flat fee rate: {}".format(key))
+                results.append(False)
+            except LogosRPCError as _:
+                results.append(True)
+
+        ## NO PRIVILEGES
+        nopriv = self.account_list[1]
+        nopriv_info = self.nodes[0].account_info(nopriv['account'])
+        nopriv_prev = nopriv_info['frontier']
+        d_id = designated_delegate(nopriv['public'], nopriv_prev)
+        
         try:
-            print('update controller: empty controller')
-            created = self.nodes[0].block_create_update_controller(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                action='add',
-                token_id=coin['token_id'],
-                controller={}
+            created = self.nodes[d_id].block_create_adjust_fee(
+                private_key=nopriv['private'],
+                previous=nopriv_prev,
+                token_id=token_main['token_id'],
+                fee_type='flat',
+                fee_rate='10'
             )
-            self.nodes[0].process(created['request'])
-            print('update controller: fail')
-        except LogosRPCError as error:
-            print(error)
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN ADJUST FEE FAILS: Controller w/o privilege able to adjust fee")
+            results.append(False)
+        except LogosRPCError as _:
+            results.append(True)
+
+        ## NO SETTING
+        main_info = self.nodes[0].account_info(accnt_main['account'])
+        main_prev = main_info['frontier']
+        d_id = designated_delegate(accnt_main['public'], main_prev)
 
         try:
-            print('update controller: not valid controller')
-            created = self.nodes[0].block_create_update_controller(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                action='add',
-                token_id=coin['token_id'],
-                controller={"account":self.account_list[2]['account'], "privileges":['modify_distribute']}
+            created = self.nodes[d_id].block_create_adjust_fee(
+                private_key=accnt_main['private'],
+                previous=main_prev,
+                token_id=token_nosetting['token_id'],
+                fee_type='flat',
+                fee_rate='10'
             )
-            self.nodes[0].process(created['request'])
-            print('update controller: fail')
-        except LogosRPCError as error:
-            print(error)
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN ADJUST FEE FAILS: Token w/o setting able to adjust fee")
+            results.append(False)
+        except LogosRPCError as _:
+            results.append(True)
+            
+        return results
+
+    #################################################################################
+    # ILLEGAL TOKEN UPDATE ISSUER INFO
+    # On Token account send chain
+    #################################################################################
+    def illegal_update_issuer_info(self, accnt_main, token_main, token_poor):
+        results = []
+
+        main_info = self.nodes[0].account_info(accnt_main['account'])
+        main_prev = main_info['frontier']
+        d_id = designated_delegate(accnt_main['public'], main_prev)
+
+        ## INSUFFICIENT FEE IN TOKEN ACCOUNT
+        try:
+            created = self.nodes[d_id].block_create_update_issuer_info(
+                private_key=accnt_main['private'],
+                previous=main_prev,
+                token_id=token_poor['token_id'],
+                new_info='testing'
+            )
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN UPDATE ISSUER INFO FAILS: token has insufficient logos fees but succeeded in update issuer info")
+            results.append(False)
+        except LogosRPCError as _:
+            results.append(True)
+
+        ## INSUFFICIENT REQUEST FEE
+        try:
+            created = self.nodes[d_id].block_create_update_issuer_info(
+                private_key=accnt_main['private'],
+                previous=main_prev,
+                token_id=token_main['token_id'],
+                new_info='testing',
+                fee=eval(MIN_FEE)-1
+            )
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN UPDATE ISSUER INFO FAILS: insufficient request fee succeeded")
+            results.append(False)
+        except LogosRPCError as _:
+            results.append(True)
+        
+
+        ## MALFORMED NEW INFO
+        for key, value in {'long info':'a'*513}.items():
+            try:
+                created = self.nodes[d_id].block_create_update_issuer_info(
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    token_id=token_main['token_id'],
+                    new_info=value
+                )
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN UPDATE ISSUER INFO FAILS: new_info: {}".format(key))
+                results.append(False)
+            except LogosRPCError as _:
+                results.append(True)
+
+        ## NO PRIVILEGES
+        nopriv = self.account_list[1]
+        nopriv_info = self.nodes[0].account_info(nopriv['account'])
+        nopriv_prev = nopriv_info['frontier']
+        d_id = designated_delegate(nopriv['public'], nopriv_prev)
+        
+        try:
+            created = self.nodes[d_id].block_create_update_issuer_info(
+                private_key=nopriv['private'],
+                previous=nopriv_prev,
+                token_id=token_main['token_id'],
+                new_info=value
+            )
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN UPDATE ISSUER INFO FAILS: Controller w/o privilege able to update issuer info")
+            results.append(False)
+        except LogosRPCError as _:
+            results.append(True)
+
+        return results
+
+    #################################################################################
+    # ILLEGAL TOKEN UPDATE CONTROLLER
+    # On Token account send chain
+    #################################################################################
+    def illegal_update_controller(self, accnt_main, token_main, token_poor):
+        results = []
+
+        main_info = self.nodes[0].account_info(accnt_main['account'])
+        main_prev = main_info['frontier']
+        d_id = designated_delegate(accnt_main['public'], main_prev)
+
+        ## INSUFFICIENT FEE IN TOKEN ACCOUNT
+        try:
+            created = self.nodes[d_id].block_create_update_controller(
+                private_key=accnt_main['private'],
+                previous=main_prev,
+                token_id=token_poor['token_id'],
+                action='add',
+                controller={"account":self.account_list[9]['account'], "privileges":[]}
+            )
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN UPDATE CONTROLLER FAILS: token has insufficient logos fees but succeeded in update issuer info")
+            results.append(False)
+        except LogosRPCError as _:
+            results.append(True)
+
+        ## INSUFFICIENT REQUEST FEE
+        try:
+            created = self.nodes[d_id].block_create_update_controller(
+                private_key=accnt_main['private'],
+                previous=main_prev,
+                token_id=token_main['token_id'],
+                action='add',
+                controller={"account":self.account_list[9]['account'], "privileges":[]},
+                fee=eval(MIN_FEE)-1
+            )
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN UPDATE CONTROLLER FAILS: insufficient request fee succeeded")
+            results.append(False)
+        except LogosRPCError as _:
+            results.append(True)
+        
+        ## MALFORMED ACTION
+        for key, value in {'empty':'','illegal':'delete'}.items():
+            try:
+                created = self.nodes[d_id].block_create_update_controller(
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    action=value,
+                    token_id=token_main['token_id'],
+                    controller={"account":self.account_list[9]['account'], "privileges":[]}
+                )
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN UPDATE CONTROLLER FAILS: action: {}".format(key))
+                results.append(False)
+            except LogosRPCError as _:
+                results.append(True)
+
+        ## MALFORMED CONTROLLER
+        controllers = {'empty':{},
+                       'illegal privilege':{'account':self.account_list[9]['account'], 'privileges':['modify_distribute']},
+                       #'duplicate privilege':{'account':self.account_list[9]['account'], 'privileges':['distribute','distribute']}
+                       }
+        
+        for key, value in controllers.items():
+            try:
+                created = self.nodes[d_id].block_create_update_controller(
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    action='add',
+                    token_id=token_main['token_id'],
+                    controller=value
+                )
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN UPDATE CONTROLLER FAILS: controller: {}".format(key))
+                results.append(False)
+            except LogosRPCError as _:
+                results.append(True)
+      
+        ## MAX NUMBER OF CONTROLLERS ALREADY
+        ### add valid controller so reaches max
+        created = self.nodes[d_id].block_create_update_controller(
+            private_key=accnt_main['private'],
+            previous=main_prev,
+            action='add',
+            token_id=token_main['token_id'],
+            controller={"account":self.account_list[9]['account'], "privileges":[]}
+        )
+        self.nodes[d_id].process(created['request'])
+        if not self.wait_for_requests_persistence([created['hash']]):
+            sys.stderr.write('Creation stopped at add controller')
+
+        main_prev = created['hash']
+        d_id = designated_delegate(accnt_main['public'], main_prev)
+        
+        try:
+            created = self.nodes[d_id].block_create_update_controller(
+                private_key=accnt_main['private'],
+                previous=main_prev,
+                action='add',
+                token_id=token_main['token_id'],
+                controller={"account":self.account_list[10]['account'], "privileges":[]}
+            )
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN UPDATE CONTROLLER FAILS: Max number of controllers exist yet succeeded in adding")
+            results.append(False)
+        except LogosRPCError as _:
+            results.append(True)
+            
+        ## NO PRIVILEGES
+        nopriv = self.account_list[1]
+        nopriv_info = self.nodes[0].account_info(nopriv['account'])
+        nopriv_prev = nopriv_info['frontier']
+        d_id = designated_delegate(nopriv['public'], nopriv_prev)
 
         try:
-            print('update controller: duplicate controller')
-            created = self.nodes[0].block_create_update_controller(
-                key=self.account_list[1]['private'],
-                previous=prev,
+            created = self.nodes[d_id].block_create_update_controller(
+                private_key=nopriv['private'],
+                previous=nopriv_prev,
                 action='add',
-                token_id=coin['token_id'],
-                controller={"account":self.account_list[2]['account'], "privileges":['distribute, distribute']}
-            )
-            self.nodes[0].process(created['request'])
-            print('update controller: fail')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print('update controller: no privilege')
-            created = self.nodes[0].block_create_update_controller(
-                key=self.account_list[2]['private'],
-                previous=prev,
-                action='add',
-                token_id=coin['token_id'],
+                token_id=token_main['token_id'],
                 controller={"account":self.account_list[2]['account'], "privileges":['distribute']}
             )
-            self.nodes[0].process(created['request'])
-            print('update controller: fail')
-        except LogosRPCError as error:
-            print(error)
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN UPDATE ISSUER INFO FAILS: Controller w/o privilege able to update issuer info")
+            results.append(False)
+        except LogosRPCError as _:
+            results.append(True)
         
-        prev = self.nodes[0].account_info(self.account_list[1]['account'])['frontier']
-        created = self.nodes[0].block_create_issuance(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            symbol='TUPCONT1',
-            name='testupdatecontroller1',
-            controllers=[{"account":self.account_list[1]['account'], "privileges": ["distribute", "update_controller"]},
-                         {"account":self.account_list[2]['account'], "privileges": ["revoke"]},
-                         {"account":self.account_list[3]['account'], "privileges": ["revoke"]},
-                         {"account":self.account_list[4]['account'], "privileges": ["revoke"]},
-                         {"account":self.account_list[5]['account'], "privileges": ["revoke"]},
-                         {"account":self.account_list[6]['account'], "privileges": ["revoke"]},
-                         {"account":self.account_list[7]['account'], "privileges": ["revoke"]},
-                         {"account":self.account_list[8]['account'], "privileges": ["revoke"]},
-                         {"account":self.account_list[9]['account'], "privileges": ["revoke"]},
-                         {"account":self.account_list[10]['account'], "privileges": ["revoke"]}],
-            settings=["revoke"]
-        )
-        coin = eval(created['request'])
-        prev = created['hash']
-        token_account = qlmdb3.toaccount(qlmdb3.unhexlify(coin['token_id']))
-        self.nodes[0].process(created['request'])
-        sleep(10)
+        return results
+    
+    #################################################################################
+    # ILLEGAL TOKEN BURN
+    # On Token account send chain
+    #################################################################################
+    def illegal_burn(self, accnt_main, token_main, token_poor):
+        results = []
 
-        gen_info = self.nodes[0].account_info()
-        sleep(6)
-        created = self.nodes[0].block_create(
-            previous=gen_info['frontier'],
-            transactions=[{"destination":token_account, "amount":"1000000000000000000000000000000000000"}]
-        )
-        self.nodes[0].process(created['request'])
-        sleep(10)
+        main_info = self.nodes[0].account_info(accnt_main['account'])
+        main_prev = main_info['frontier']
+        d_id = designated_delegate(accnt_main['public'], main_prev)
 
+        ## INSUFFICIENT FEE IN TOKEN ACCOUNT
         try:
-            print('update controller: max controller')
-            created = self.nodes[0].block_create_update_controller(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                action='add',
-                token_id=coin['token_id'],
-                controller={"account":self.account_list[11]['account'], "privileges":['distribute']}
+            created = self.nodes[d_id].block_create_burn(
+                private_key=accnt_main['private'],
+                previous=main_prev,
+                token_id=token_poor['token_id'],
+                amount='100000'
             )
-            self.nodes[0].process(created['request'])
-            print('update controller: fail')
-        except LogosRPCError as error:
-            print(error)
-                
-    def test_burn(self):
-        prev = self.nodes[0].account_info(self.account_list[1]['account'])['frontier']
-        print("creating valid token account")
-        created = self.nodes[0].block_create_issuance(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            symbol='TBURN',
-            name='testburn',
-            controllers=[{"account":self.account_list[1]['account'], "privileges": ["issuance", "burn","distribute"]},
-            {"account":self.account_list[2]['account'], "privileges": ["distribute"]}],
-            settings=["revoke", "modify_issuance"]
-        )
-        print(created)
-        coin = eval(created['request'])
-        prev = created['hash']
-        self.nodes[0].process(created['request'])
-        sleep(10)
-        
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN BURN FAILS: token has insufficient logos fees but succeeded in burn")
+            results.append(False)
+        except LogosRPCError as _:
+            results.append(True)
+
+        ## INSUFFICIENT REQUEST FEE
         try:
-            created = self.nodes[0].block_create_burn(
-                type="burn",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                amount="100000",
-                token_id=coin['token_id']
+            created = self.nodes[d_id].block_create_burn(
+                private_key=accnt_main['private'],
+                previous=main_prev,
+                token_id=token_main['token_id'],
+                amount='100000',
+                fee=eval(MIN_FEE)-1
             )
-            self.nodes[0].process(created['request'])
-        except LogosRPCError as error:
-            print(error)
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN BURN FAILS: insufficient request fee succeeded")
+            results.append(False)
+        except LogosRPCError as _:
+            results.append(True)
 
-        try:
-            print("burn: decimal amount")
-            created = self.nodes[0].block_create_burn(
-                type="burn",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                amount="100000.12",
-                token_id=coin['token_id']
-            )
-            self.nodes[0].process(created['request'])
-            print('burn: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("burn: negative amount")
-            created = self.nodes[0].block_create_burn(
-                type="burn",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                amount="-100000",
-                token_id=coin['token_id']
-            )
-            self.nodes[0].process(created['request'])
-            print('burn: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("burn: empty amount")
-            created = self.nodes[0].block_create_burn(
-                type="burn",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                amount="",
-                token_id=coin['token_id']
-            )
-            self.nodes[0].process(created['request'])
-            print('burn: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("burn: no privilege")
-            created = self.nodes[0].block_create_burn(
-                type="burn",
-                key=self.account_list[2]['private'],
-                previous=prev,
-                amount="100",
-                token_id=coin['token_id']
-            )
-            self.nodes[0].process(created['request'])
-            print('burn: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("burn: more than total")
-            created = self.nodes[0].block_create_burn(
-                type="burn",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                amount="2200000000000000",
-                token_id=coin['token_id']
-            )
-            self.nodes[0].process(created['request'])
-            print('burn: fails')
-        except LogosRPCError as error:
-            print(error)
-
-    def test_distribute(self):
-        prev = self.nodes[0].account_info(self.account_list[1]['account'])['frontier']
-        print("creating valid token account")
-        created = self.nodes[0].block_create_issuance(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            symbol='TDIST',
-            name='testdistribute',
-            controllers=[{"account":self.account_list[1]['account'], "privileges": ["issuance", "burn","distribute"]},
-            {"account":self.account_list[2]['account'], "privileges": ["revoke"]}],
-            settings=["revoke", "modify_issuance"]
-        )
-        print(created)
-        coin = eval(created['request'])
-        prev = created['hash']
-        self.nodes[0].process(created['request'])
-        sleep(10)
-
-        print("valid")
-        created = self.nodes[0].block_create_tokreq(
-            type="distribute",
-            key=self.account_list[1]['private'],
-            previous=prev,
-            token_id=coin['token_id'],
-            transaction={"destination" : self.account_list[1]['account'], "amount": "100000000000000" }
-        )
-        self.nodes[0].process(created['request'])
-
-        sleep(7)
-        prev = created['hash']
-        print("PREV = {}".format(prev))
-        '''
-        try:
-            print("distribute: decimal amount")
-            created = self.nodes[0].block_create_tokreq(
-                type="distribute",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                transaction={"destination" : self.account_list[1]['account'], "amount": "20000000000.123" }
-            )
-            print(created)
-            self.nodes[0].process(created['request'])
-            print('distribute: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        prev = created['hash']
-        print("PREV = {}".format(prev))
-        '''
-        try:
-            print("distribute: negative amount")
-            created = self.nodes[0].block_create_tokreq(
-                type="distribute",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                transaction={"destination" : self.account_list[1]['account'], "amount": "-100000000000000" }
-            )
-            self.nodes[0].process(created['request'])
-            print('distribute: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("distribute: empty amount")
-            created = self.nodes[0].block_create_tokreq(
-                type="distribute",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                transaction={"destination" : self.account_list[1]['account'], "amount": "" }
-            )
-            self.nodes[0].process(created['request'])
-            print('distribute: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("distribute: public key destination")
-            created = self.nodes[0].block_create_tokreq(
-                type="distribute",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                transaction={"destination" : self.account_list[1]['public'], "amount": "100000000000000" }
-            )
-            self.nodes[0].process(created['request'])
-            print('distribute: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("distribute: empty destination")
-            created = self.nodes[0].block_create_tokreq(
-                type="distribute",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                transaction={"destination": "", "amount": "100000000000000" }
-            )
-            self.nodes[0].process(created['request'])
-            print('distribute: fails')
-        except LogosRPCError as error:
-            print(error)
-
-
-        try:
-            print("distribute: no distribute privilege")
-            created = self.nodes[0].block_create_tokreq(
-                type="distribute",
-                key=self.account_list[2]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                transaction={"destination": self.account_list[1]['account'], "amount": "10999999" }
-            )
-            self.nodes[0].process(created['request'])
-            print('distribute: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("distribute: more than max")
-            created = self.nodes[0].block_create_tokreq(
-                type="distribute",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                transaction={"destination": self.account_list[1]['account'], "amount": "2200000000000000" }
-            )
-            self.nodes[0].process(created['request'])
-            print('distribute: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        prev = self.nodes[0].account_info(self.account_list[1]['account'])['frontier']
-        print("creating valid token account")
-        created = self.nodes[0].block_create_issuance(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            symbol='TDIST1',
-            name='testdistribute1',
-            controllers=[{"account":self.account_list[1]['account'], "privileges": ["issuance", "burn","distribute"]},
-            {"account":self.account_list[2]['account'], "privileges": ["revoke"]}],
-            settings=["revoke", "modify_issuance"]
-        )
-        print(created)
-        coin = eval(created['request'])
-        prev = created['hash']
-        self.nodes[0].process(created['request'])
-        sleep(10)
-            
-    def test_withdraw_fee(self):
-        prev = self.nodes[0].account_info(self.account_list[1]['account'])['frontier']
-        print("creating valid token account")
-        created = self.nodes[0].block_create_issuance(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            symbol='TWFEE',
-            name='testwithdrawfee',
-            controllers=[{"account":self.account_list[1]['account'], "privileges": ["withdraw_fee", "issuance", "burn","distribute"]},
-            {"account":self.account_list[2]['account'], "privileges": ["revoke"]}],
-            settings=["revoke", "modify_issuance"]
-        )
-        print(created)
-        coin = eval(created['request'])
-        prev = created['hash']
-        token_account = qlmdb3.toaccount(qlmdb3.unhexlify(coin['token_id']))
-        self.nodes[0].process(created['request'])
-        sleep(10)
-
-        gen_info = self.nodes[0].account_info()
-        sleep(6)
-        
-        created = self.nodes[0].block_create(
-            previous=gen_info['frontier'],
-            transactions=[{"destination":token_account, "amount":"1000000000000000000000000000000000000"}]
-        )
-        
-        self.nodes[0].process(created['request'])
-
-        sleep(10)
-
-        print("valid distribute")
-        created = self.nodes[0].block_create_tokreq(
-            type="distribute",
-            key=self.account_list[1]['private'],
-            previous=prev,
-            token_id=coin['token_id'],
-            transaction={"destination" : self.account_list[1]['account'], "amount": "100000000000000" }
-        )
-        self.nodes[0].process(created['request'])
-
-        sleep(10)
-        created = self.nodes[0].block_create_token_send(
-            type="token_send",
-            key=self.account_list[1]['private'],
-            previous=prev,
-            transactions=[{"destination":self.account_list[2]['account'], "amount":"2000000"}],
-            token_id=coin['token_id']
-        )
-        prev = created['hash']
-        print(prev)
-        self.nodes[0].process(created['request'])
-        sleep(10)
-        '''
-        try:
-            print("withdraw fee: decimal amount")
-            created = self.nodes[0].block_create_withdraw(
-                type="withdraw_fee",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                transaction={"destination":self.account_list[2]['account'], "amount":"20.12"},
-                token_id=coin['token_id']
-            )
-            self.nodes[0].process(created['request'])
-            print('withdraw fee: fails')
-        except LogosRPCError as error:
-            print(error)
-        '''
-        try:
-            print("withdraw fee: negative amount")
-            created = self.nodes[0].block_create_withdraw(
-                type="withdraw_fee",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                transaction={"destination":self.account_list[2]['account'], "amount":"-20"},
-                token_id=coin['token_id']
-            )
-            self.nodes[0].process(created['request'])
-            print('withdraw fee: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("withdraw fee: empty amount")
-            created = self.nodes[0].block_create_withdraw(
-                type="withdraw_fee",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                transaction={"destination":self.account_list[2]['account'], "amount":""},
-                token_id=coin['token_id']
-            )
-            self.nodes[0].process(created['request'])
-            print('withdraw fee: fails')
-        except LogosRPCError as error:
-            print(error)
-            
-        try:
-            print("withdraw fee: empty destination")
-            created = self.nodes[0].block_create_withdraw(
-                type="withdraw_fee",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                transaction={"destination":"", "amount":"20"},
-                token_id=coin['token_id']
-            )
-            self.nodes[0].process(created['request'])
-            print('withdraw fee: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("withdraw fee: publickey destination")
-            created = self.nodes[0].block_create_withdraw(
-                type="withdraw_fee",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                transaction={"destination":self.account_list[2]['public'], "amount":"20"},
-                token_id=coin['token_id']
-            )
-            self.nodes[0].process(created['request'])
-            print('withdraw fee: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("withdraw fee: no privilege")
-            created = self.nodes[0].block_create_withdraw(
-                type="withdraw_fee",
-                key=self.account_list[2]['private'],
-                previous=prev,
-                transaction={"destination":self.account_list[2]['account'], "amount":"20"},
-                token_id=coin['token_id']
-            )
-            self.nodes[0].process(created['request'])
-            print('withdraw fee: fails')
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("withdraw fee: excessive withdraw")
-            created = self.nodes[0].block_create_withdraw(
-                type="withdraw_fee",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                transaction={"destination":self.account_list[2]['account'], "amount":"200000000000000000000000000"},
-                token_id=coin['token_id']
-            )
-            self.nodes[0].process(created['request'])
-            print('withdraw fee: fails')
-        except LogosRPCError as error:
-            print(error)
-
-    def test_withdraw_logos(self):
-        prev = self.nodes[0].account_info(self.account_list[1]['account'])['frontier']
-        print("creating valid token account")
-        created = self.nodes[0].block_create_issuance(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            symbol='TWLOGOS',
-            name='testwithdrawlogos',
-            controllers=[{"account":self.account_list[1]['account'], "privileges": ["withdraw_logos", "withdraw_fee", "issuance", "burn","distribute"]},
-            {"account":self.account_list[2]['account'], "privileges": ["revoke"]}],
-            settings=["revoke", "modify_issuance"]
-        )
-        print(created)
-        coin = eval(created['request'])
-        prev = created['hash']
-        token_account = qlmdb3.toaccount(qlmdb3.unhexlify(coin['token_id']))
-        self.nodes[0].process(created['request'])
-        sleep(10)
-
-        gen_info = self.nodes[0].account_info()
-        sleep(6)
-        
-        created = self.nodes[0].block_create(
-            previous=gen_info['frontier'],
-            transactions=[{"destination":token_account, "amount":"1000000000000000000000000000000000000"}]
-        )
-        
-        self.nodes[0].process(created['request'])
-
-        sleep(10)
-
-        created = self.nodes[0].block_create_withdraw(
-            type="withdraw_logos",
-            key=self.account_list[1]['private'],
-            previous=prev,
-            transaction={"destination":self.account_list[2]['account'], "amount":"300000000000000"},
-            token_id=coin['token_id']
-        )
-        self.nodes[0].process(created['request'])
-        
-        try:
-            print("withdraw logos: decimal amount")
-            created = self.nodes[0].block_create_withdraw(
-                type="withdraw_logos",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                transaction={"destination":self.account_list[2]['account'], "amount":"300000.123"},
-                token_id=coin['token_id']
-            )
-            self.nodes[0].process(created['request'])
-            print("withdraw logos: fail")
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("withdraw logos: negative amount")
-            created = self.nodes[0].block_create_withdraw(
-                type="withdraw_logos",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                transaction={"destination":self.account_list[2]['account'], "amount":"-300000"},
-                token_id=coin['token_id']
-            )
-            self.nodes[0].process(created['request'])
-            print("withdraw logos: fail")
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("withdraw logos: empty amount")
-            created = self.nodes[0].block_create_withdraw(
-                type="withdraw_logos",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                transaction={"destination":self.account_list[2]['account'], "amount":""},
-                token_id=coin['token_id']
-            )
-            self.nodes[0].process(created['request'])
-            print("withdraw logos: fail")
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("withdraw logos: empty destination")
-            created = self.nodes[0].block_create_withdraw(
-                type="withdraw_logos",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                transaction={"destination":"", "amount":"3000000"},
-                token_id=coin['token_id']
-            )
-            self.nodes[0].process(created['request'])
-            print("withdraw logos: fail")
-        except LogosRPCError as error:
-            print(error)
-            
-        try:
-            print("withdraw logos: publickey destination")
-            created = self.nodes[0].block_create_withdraw(
-                type="withdraw_logos",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                transaction={"destination":self.account_list[2]['public'], "amount":"3000000"},
-                token_id=coin['token_id']
-            )
-            self.nodes[0].process(created['request'])
-            print("withdraw logos: fail")
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("withdraw logos: no privilege")
-            created = self.nodes[0].block_create_withdraw(
-                type="withdraw_logos",
-                key=self.account_list[2]['private'],
-                previous=prev,
-                transaction={"destination":self.account_list[1]['account'], "amount":"300000"},
-                token_id=coin['token_id']
-            )
-            self.nodes[0].process(created['request'])
-            print("withdraw logos: fail")
-        except LogosRPCError as error:
-            print(error)
-
-        try:
-            print("withdraw logos: excessive withdraw")
-            created = self.nodes[0].block_create_withdraw(
-                type="withdraw_logos",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                transaction={"destination":self.account_list[2]['account'], "amount":"1000000000000000000000000000000000001"},
-                token_id=coin['token_id']
-            )
-            self.nodes[0].process(created['request'])
-            print("withdraw logos: fail")
-        except LogosRPCError as error:
-            print(error)
-
-    def test_token_send(self):
-        malformed_amt = {'decimal':'1234.1', 'negative':'-1234', 'empty':''}
-        malformed_dest = {'empty':'', 'publickey':'E41C9CFF2C98A049519C516E275F216A22A2C28290322A6504679F7C323F63D6'}
-        prev = self.nodes[0].account_info(self.account_list[1]['account'])['frontier']
-        print("creating valid token account")
-        created = self.nodes[0].block_create_issuance(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            symbol='TTOKSEND',
-            name='testtokensend',
-            controllers=[{"account":self.account_list[1]['account'], "privileges": ["withdraw_fee", "issuance", "burn","distribute"]},
-            {"account":self.account_list[2]['account'], "privileges": ["revoke"]}],
-            settings=["revoke", "modify_issuance"]
-        )
-        print(created)
-        coin = eval(created['request'])
-        prev = created['hash']
-        token_account = qlmdb3.toaccount(qlmdb3.unhexlify(coin['token_id']))
-        self.nodes[0].process(created['request'])
-        sleep(10)
-
-        gen_info = self.nodes[0].account_info()
-        sleep(6)
-        created = self.nodes[0].block_create(
-            previous=gen_info['frontier'],
-            transactions=[{"destination":token_account, "amount":"1000000000000000000000000000000000000"}]
-        )
-        
-        self.nodes[0].process(created['request'])
-
-        sleep(10)
-
-        print("valid distribute")
-        for i in range(2):
-            created = self.nodes[0].block_create_tokreq(
-                type="distribute",
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                transaction={"destination" : self.account_list[i]['account'], "amount": "100000000000000" }
-            )
-            self.nodes[0].process(created['request'])
-            sleep(7)
-
-        '''
-        for key, value in malformed_amt.items():
+        ## MALFORMED AMOUNT
+        for key, value in {'empty':'','decimal':'10000.12','excessive':'2200000000000000'}.items():
             try:
-                print("token send: {} amount".format(key))
-                created = self.nodes[0].block_create_token_send(
-                    key=self.account_list[1]['private'],
-                    previous=prev,
-                    token_id=coin['token_id'],
-                    transactions=[{"destination":self.account_list[2]['account'], "amount":value }]
+                created = self.nodes[d_id].block_create_burn(
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    token_id=token_main['token_id'],
+                    amount=value
                 )
-                self.nodes[0].process(created['request'])
-                print("token send: fail")
-            except LogosRPCError as error:
-                print(error)
-        '''
-        for key, value in malformed_dest.items():
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN BURN FAILS: amount: {}".format(key))
+                results.append(False)
+            except LogosRPCError as _:
+                results.append(True)
+
+        ## NO PRIVILEGES
+        nopriv = self.account_list[1]
+        nopriv_info = self.nodes[0].account_info(nopriv['account'])
+        nopriv_prev = nopriv_info['frontier']
+        d_id = designated_delegate(nopriv['public'], nopriv_prev)
+
+        try:
+            created = self.nodes[d_id].block_create_burn(
+                private_key=nopriv['private'],
+                previous=nopriv_prev,
+                token_id=token_main['token_id'],
+                amount='100000'
+            )
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN BURN FAILS: Controller w/o privilege able to burn")
+            results.append(False)
+        except LogosRPCError as _:
+            results.append(True)
+            
+        return results
+
+    #################################################################################
+    # ILLEGAL TOKEN DISTRIBUTE
+    # On Token account send chain
+    #################################################################################
+    def illegal_distribute(self, accnt_main, token_main, token_poor):
+        results = []
+
+        main_info = self.nodes[0].account_info(accnt_main['account'])
+        main_prev = main_info['frontier']
+        d_id = designated_delegate(accnt_main['public'], main_prev)
+
+        ## INSUFFICIENT FEE IN TOKEN ACCOUNT
+        try:
+            created = self.nodes[d_id].block_create_distribute(
+                private_key=accnt_main['private'],
+                previous=main_prev,
+                token_id=token_poor['token_id'],
+                transaction={'destination':accnt_main['account'], 'amount':'100000'}
+            )
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN DISTRIBUTE FAILS: token has insufficient logos fees but succeeded in distribute")
+            results.append(False)
+        except LogosRPCError as _:
+            results.append(True)
+
+        ## INSUFFICIENT REQUEST FEE
+        try:
+            created = self.nodes[d_id].block_create_distribute(
+                private_key=accnt_main['private'],
+                previous=main_prev,
+                token_id=token_main['token_id'],
+                transaction={'destination':accnt_main['account'], 'amount':'100000'},
+                fee=eval(MIN_FEE)-1
+            )
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN DISTRIBUTE FAILS: insufficient request fee succeeded")
+            results.append(False)
+        except LogosRPCError as _:
+            results.append(True)
+
+        ## MALFORMED TRANSACTION AMOUNT
+        for key, value in {'empty':'','negative':'-100000','excessive':'2200000000000000'}.items():
             try:
-                print("token send: {} destination".format(key))
-                created = self.nodes[0].block_create_token_send(
-                    key=self.account_list[1]['private'],
-                    previous=prev,
-                    token_id=coin['token_id'],
-                    transactions=[{"destination":value, "amount":"10000" }]
+                created = self.nodes[d_id].block_create_distribute(
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    token_id=token_main['token_id'],
+                    transaction={'destination':accnt_main['account'], 'amount':value}
                 )
-                self.nodes[0].process(created['request'])
-                print("token send: fail")
-            except LogosRPCError as error:
-                print(error)
-        '''
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN DISTRIBUTE FAILS: txn amount: {}".format(key))
+                results.append(False)
+            except LogosRPCError as _:
+                results.append(True)
+            
+        ## MALFORMED TRANSACTION DESTINATION
+        for key, value in {'empty':'','public key dest':accnt_main['public']}.items():
+            try:
+                created = self.nodes[d_id].block_create_distribute(
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    token_id=token_main['token_id'],
+                    transaction={'destination':value, 'amount':'100000'}
+                )
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN DISTRIBUTE FAILS: txn destination: {}".format(key))
+                results.append(False)
+            except LogosRPCError as _:
+                results.append(True)
+            
+        ## NO PRIVILEGES
+        nopriv = self.account_list[1]
+        nopriv_info = self.nodes[0].account_info(nopriv['account'])
+        nopriv_prev = nopriv_info['frontier']
+        d_id = designated_delegate(nopriv['public'], nopriv_prev)
+
         try:
-            print("token send: empty transaction")
-            created = self.nodes[0].block_create_token_send(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                transactions=[]
+            created = self.nodes[d_id].block_create_distribute(
+                private_key=nopriv['private'],
+                previous=nopriv_prev,
+                token_id=token_main['token_id'],
+                transaction={'destination':nopriv['account'], 'amount':'100000'}
             )
-            self.nodes[0].process(created['request'])
-            print("token send: fail")
-        except LogosRPCError as error:
-            print(error)
-        '''
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN DISTRIBUTE FAILS: Controller w/o privilege able to distribute")
+            results.append(False)
+        except LogosRPCError as _:
+            results.append(True)
+            
+        return results
+
+    #################################################################################
+    # ILLEGAL TOKEN WITHDRAW FEE
+    # On Token account send chain
+    #################################################################################
+    def illegal_withdraw_fee(self, accnt_main, token_main, token_poor):
+        results = []
+
+        return results
+
+    #################################################################################
+    # ILLEGAL TOKEN WITHDRAW LOGOS
+    # On Token account send chain
+    #################################################################################
+    def illegal_withdraw_logos(self, accnt_main, token_main, token_poor):
+        results = []
         
+        main_info = self.nodes[0].account_info(accnt_main['account'])
+        main_prev = main_info['frontier']
+        d_id = designated_delegate(accnt_main['public'], main_prev)
+
+        ## INSUFFICIENT FEE IN TOKEN ACCOUNT
         try:
-            print("token send: too many transaction")
-            created = self.nodes[0].block_create_token_send(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                transactions=[{"destination":self.account_list[3]['account'], "amount":"100000"},
-                              {"destination":self.account_list[4]['account'], "amount":"100000"},
-                              {"destination":self.account_list[5]['account'], "amount":"100000"},
-                              {"destination":self.account_list[6]['account'], "amount":"100000"},
-                              {"destination":self.account_list[7]['account'], "amount":"100000"},
-                              {"destination":self.account_list[8]['account'], "amount":"100000"},
-                              {"destination":self.account_list[9]['account'], "amount":"100000"},
-                              {"destination":self.account_list[10]['account'], "amount":"100000"},
-                              {"destination":self.account_list[11]['account'], "amount":"100000"}]
+            created = self.nodes[d_id].block_create_withdraw(
+                type='withdraw_logos',
+                private_key=accnt_main['private'],
+                previous=main_prev,
+                token_id=token_poor['token_id'],
+                transaction={'destination':accnt_main['account'], 'amount':'100000'}
             )
-            self.nodes[0].process(created['request'])
-            print("token send: fail")
-        except LogosRPCError as error:
-            print(error)
-        
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN WITHDRAW LOGOS FAILS: token has insufficient logos fees but succeeded in withdrawing logos")
+            results.append(False)
+        except LogosRPCError as _:
+            results.append(True)
+
+        ## INSUFFICIENT REQUEST FEE
         try:
-            print("token send: excessive send amount")
-            created = self.nodes[0].block_create_token_send(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                transactions=[{"destination":self.account_list[2]['account'], "amount":"100000000000001"}]
+            created = self.nodes[d_id].block_create_withdraw(
+                type='withdraw_logos',
+                private_key=accnt_main['private'],
+                previous=main_prev,
+                token_id=token_main['token_id'],
+                transaction={'destination':accnt_main['account'], 'amount':'100000'},
+                fee=eval(MIN_FEE)-1
             )
-            self.nodes[0].process(created['request'])
-            print("token send: fail")
-        except LogosRPCError as error:
-            print(error)
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN WTIHDRAW LOGOS FAILS: insufficient request fee succeeded")
+            results.append(False)
+        except LogosRPCError as _:
+            results.append(True)
 
-        '''
-        try:
-            print("token send: below min fee")
-            created = self.nodes[0].block_create_token_send(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                fee='0',
-                token_id=coin['token_id'],
-                transactions=[{"destination":self.account_list[2]['account'], "amount":"10000"}]
-            )
-            self.nodes[0].process(created['request'])
-            print("token send: fail")
-        except LogosRPCError as error:
-            print(error)
-        '''
-        prev = self.nodes[0].account_info(self.account_list[1]['account'])['frontier']
-        print("creating valid token account")
-        created = self.nodes[0].block_create_issuance(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            symbol='TTKSEND1',
-            name='testtokensend1',
-            controllers=[{"account":self.account_list[1]['account'], "privileges": ["withdraw_fee", "issuance", "burn","distribute", "whitelist", "freeze"]},
-            {"account":self.account_list[2]['account'], "privileges": ["revoke"]}],
-            settings=["revoke", "modify_issuance", "whitelist", "freeze"]
-        )
-        print(created)
-        coin1 = eval(created['request'])
-        prev = created['hash']
-        token_account1 = qlmdb3.toaccount(qlmdb3.unhexlify(coin1['token_id']))
-        self.nodes[0].process(created['request'])
-        sleep(10)
-
-        gen_info = self.nodes[0].account_info()
-        sleep(6)
-        created = self.nodes[0].block_create(
-            previous=gen_info['frontier'],
-            transactions=[{"destination":token_account1, "amount":"1000000000000000000000000000000000000"}]
-        )
-        
-        self.nodes[0].process(created['request'])
-
-        sleep(10)
-        
-        try:
-            print("token send: send to foreign tokenaccount")
-            created = self.nodes[0].block_create_token_send(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin['token_id'],
-                transactions=[{"destination":token_account1, "amount":"10000"}]
-            )
-            self.nodes[0].process(created['request'])
-            print(created)
-            print("token send: fail")
-        except LogosRPCError as error:
-            print(error)
-
-        created = self.nodes[0].block_create_adjust_user_status(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            token_id=coin1['token_id'],
-            status="whitelisted",
-            account=self.account_list[1]['account']
-        )
-        self.nodes[0].process(created['request'])
-        sleep(7)
-
-        created = self.nodes[0].block_create_tokreq(
-            type="distribute",
-            key=self.account_list[1]['private'],
-            previous=prev,
-            token_id=coin1['token_id'],
-            transaction={"destination" : self.account_list[i]['account'], "amount": "100000000000000" }
-        )
-        self.nodes[0].process(created['request'])
-        sleep(7)
-        print(self.nodes[0].account_info(self.account_list[1]['account']))
+        ## MALFORMED TRANSACTION AMOUNT
+        #for key, value in {'empty':'','negative':'-100000','excessive':'30000000000000000000000000000001'}.items(): ## EMPTY AND NEGATIVE WORK (get set to 0)
+        for key, value in {'excessive':'30000000000000000000000000000001'}.items(): ## EMPTY IS FINE
+            try:
+                created = self.nodes[d_id].block_create_withdraw(
+                    type='withdraw_logos',
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    token_id=token_main['token_id'],
+                    transaction={'destination':accnt_main['account'], 'amount':value}
+                )
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN WITHDRAW LOGOS FAILS: txn amount: {}".format(key))
+                results.append(False)
+            except LogosRPCError as _:
+                results.append(True)
+            
+        ## MALFORMED TRANSACTION DESTINATION
+        for key, value in {'empty':'','public key dest':accnt_main['public']}.items():
+            try:
+                created = self.nodes[d_id].block_create_withdraw(
+                    type='withdraw_logos',
+                    private_key=accnt_main['private'],
+                    previous=main_prev,
+                    token_id=token_main['token_id'],
+                    transaction={'destination':value, 'amount':'100000'}
+                )
+                self.nodes[d_id].process(created['request'])
+                print("TOKEN WITHDRAW LOGOS FAILS: txn destination: {}".format(key))
+                results.append(False)
+            except LogosRPCError as _:
+                results.append(True)
+            
+        ## NO PRIVILEGES
+        nopriv = self.account_list[1]
+        nopriv_info = self.nodes[0].account_info(nopriv['account'])
+        nopriv_prev = nopriv_info['frontier']
+        d_id = designated_delegate(nopriv['public'], nopriv_prev)
 
         try:
-            print("token send: send to non whitelisted account")
-            created = self.nodes[0].block_create_token_send(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin1['token_id'],
-                transactions=[{"destination":self.account_list[2]['account'], "amount":"10000"}]
+            created = self.nodes[d_id].block_create_withdraw(
+                type='withdraw_logos',
+                private_key=nopriv['private'],
+                previous=nopriv_prev,
+                token_id=token_main['token_id'],
+                transaction={'destination':nopriv['account'], 'amount':'100000'}
             )
-            self.nodes[0].process(created['request'])
-            print("token send: fail")
-        except LogosRPCError as error:
-            print(error)
+            self.nodes[d_id].process(created['request'])
+            print("TOKEN DISTRIBUTE FAILS: Controller w/o privilege able to withdraw logos")
+            results.append(False)
+        except LogosRPCError as _:
+            results.append(True)
+            
+        return results
 
-        
-        created = self.nodes[0].block_create_adjust_user_status(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            token_id=coin1['token_id'],
-            status="whitelisted",
-            account=self.account_list[3]['account']
-        )
-        self.nodes[0].process(created['request'])
-        sleep(7)
+    #################################################################################
+    # ILLEGAL TOKEN SEND
+    # On Logos account send chain
+    #################################################################################
+    def illegal_token_send(self, accnt_main, token_main, accnt_poor):
+        results = []
 
-        created = self.nodes[0].block_create_adjust_user_status(
-            key=self.account_list[1]['private'],
-            previous=prev,
-            token_id=coin1['token_id'],
-            status="frozen",
-            account=self.account_list[3]['account']
-        )
-        self.nodes[0].process(created['request'])
-        sleep(7)
-
-        try:
-            print("token send: send to frozen account")
-            created = self.nodes[0].block_create_token_send(
-                key=self.account_list[1]['private'],
-                previous=prev,
-                token_id=coin1['token_id'],
-                transactions=[{"destination":self.account_list[3]['account'], "amount":"10000"}]
-            )
-            self.nodes[0].process(created['request'])
-            print("token send: fail")
-        except LogosRPCError as error:
-            print(error)
-
-        
+        return results
