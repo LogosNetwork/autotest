@@ -280,8 +280,8 @@
         "HVM64": "ami-09cc2ac032dabbdc8"
       },
       "gp2-us-east-1": {
-        "PV64": "ami-0ec7e041a60fb0333",
-        "HVM64": "ami-0ec7e041a60fb0333"
+        "PV64": "ami-0e14967ef9b685d2e",
+        "HVM64": "ami-0e14967ef9b685d2e"
       },
       "io1-us-west-1": {
         "PV64": "ami-0d57457a58db81c02",

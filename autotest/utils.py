@@ -46,7 +46,8 @@ class LogosRpc:
         else:
             self.ip = ip
             self.port = port
-        self.txa_json_port = txa_json_port
+        # self.txa_json_port = txa_json_port
+        self.txa_json_port = RPC_PORT
         self.uri = 'http://{}:{}'.format(self.ip, self.port)
         self.txa_json_uri = 'http://{}:{}'.format(self.ip, self.txa_json_port)
 

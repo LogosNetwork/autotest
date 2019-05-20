@@ -193,7 +193,7 @@ class TestCaseMixin:
                 return True
             sleep(1)
             retries += 1
-            if retries > max_retries or time() - t0 > int(len(hashes) / 600 + 30):
+            if retries > max_retries or time() - t0 > int(len(hashes) / 100 + 30):
                 print(self.delegates[0].blocks(hashes))
                 return False
 
