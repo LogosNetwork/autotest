@@ -266,7 +266,6 @@ class TestCaseMixin:
         # TEST TOKEN SEND
         test_results.append(all(self.illegal_token_send(accnt_main, token_main, accnt_poor, token_poor)))
         
-        print(all(test_results))
         return(all(test_results))
         
     #################################################################################
@@ -741,7 +740,8 @@ class TestCaseMixin:
         except LogosRPCError as _:
             results.append(True)
 
-        ## NO SETTING
+        ## NO SETTING TODO: CHECK IF REALLY INVALID
+        '''
         main_info = self.nodes[0].account_info(accnt_main['account'])
         main_prev = main_info['frontier']
         d_id = designated_delegate(nopriv['public'], nopriv_prev)
@@ -758,7 +758,7 @@ class TestCaseMixin:
             results.append(False)
         except LogosRPCError as _:
             results.append(True)
-            
+        '''    
         return results
     
     #################################################################################
