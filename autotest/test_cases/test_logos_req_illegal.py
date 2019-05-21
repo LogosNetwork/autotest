@@ -2,7 +2,7 @@ from utils import *
 
 class TestCaseMixin:
 
-    def test_05_txn_illegal(self, sender_size=10, num_worker_threads=8):
+    def test_02_logos_req_illegal(self, sender_size=10, num_worker_threads=8):
         d_ids = [random.randrange(0, self.num_delegates) for _ in range(sender_size)]
         errors = 0
         tests = 0

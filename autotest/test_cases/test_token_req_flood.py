@@ -10,8 +10,8 @@ N_WORKERS = 32
 
 class TestCaseMixin:
 
-    def test_11_token_requests_flood(self, num_worker_threads=N_WORKERS, pwr=PWR):
-        self.create_tokens_parallel(int(self.num_accounts/2), pwr, num_worker_threads=num_worker_threads)
+    def test_12_token_req_flood(self, num_worker_threads=N_WORKERS, pwr=PWR):
+        return self.create_tokens_parallel(int(self.num_accounts/2), pwr, num_worker_threads=num_worker_threads)
 
     def create_tokens_parallel(self, r1_size, powr=PWR, txn_size=MAX_TXN, num_worker_threads=N_WORKERS):
         d_id = 0
@@ -20,7 +20,7 @@ class TestCaseMixin:
         print('Creating initial token group of {} tokens'.format(r1_size), end='')
         gen_prev = self.nodes[0].account_info()['frontier']
         for i in range(r1_size):
-            print("start creation")
+            #print("start creation")
             account = self.accounts[i]
             d_id, request_data, tok_account, tok_id = self.create_issuance(account, total_supply, d_id, i)
             self.delegates[d_id].process(request_data['request'])
@@ -28,7 +28,6 @@ class TestCaseMixin:
             if not self.wait_for_requests_persistence([request_data['hash']]):
                 sys.stderr.write('Creation stopped at index {}, account {}'.format(i, account['account']))
                 break
-            print("persisted")
             self.tokens.append({"id":tok_id, "account":tok_account})
             print('.', end='')
             
@@ -46,20 +45,22 @@ class TestCaseMixin:
         print()
         del d_id
 
-        print(self.tokens)
+        #print(self.tokens)
         send_amt = int(total_supply/10000)
         if not self.distribute_and_confirm(r1_size, send_amt, num_worker_threads):
                 print('Failed at iteration with exponent i={}'.format(i))
-                return
+                return False
         sender_size = r1_size
         for i in range(powr):
             print('\nStarting round i = {} of {} txns'.format(i + 1, sender_size*8))
             send_amt = int(send_amt / (txn_size + 1 + 1))
             if not self.send_token_and_confirm(sender_size, send_amt, self.tokens[0]['id'], txn_size, num_worker_threads):
                 print('Failed at iteration with exponent i={}'.format(i))
-                return
+                return False
             sender_size *= (1 + txn_size)
-         
+
+        return True
+    
     def create_issuance(self, account, supply, designated_id=0, symbol=0):
         info_data = self.nodes[designated_id].account_info(account['account'])
         prev = info_data['frontier']
@@ -74,7 +75,6 @@ class TestCaseMixin:
             settings=["revoke", "issuance"],
             fee=MIN_FEE
         )
-        print("Create issuance")
         coin = eval(create_data['request'])
         token_account = qlmdb3.toaccount(qlmdb3.unhexlify(coin['token_id']))
         token_id = coin['token_id']
@@ -142,7 +142,7 @@ class TestCaseMixin:
         for j in range(sender_size):
             q.put((j, d_ids[j], request_data_list[j]))
         #print(request_data_list)
-        print(q.qsize())
+        #print(q.qsize())
         resps = self.process_request_queue(q, num_worker_threads)
         for k, r in resps.items():
             if 'rpc_error' in r:

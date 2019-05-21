@@ -4,26 +4,26 @@ import random
 
 class TestCaseMixin:
 
-    def test_00_logos_requests(self):
-        test_res = []
+    def test_00_logos_req(self):
+        test_results = []
         #SEND TO GENESIS
-        #test_res.append(self.genesis_to_self())
+        #test_results.append(self.genesis_to_self())
         
         #SEND TO ACCOUNT
-        test_res.append(self.genesis_to_account())
+        test_results.append(self.genesis_to_account())
 
         #SEND TO SELF
-        #test_res.append(self.send_to_self())
+        #test_results.append(self.send_to_self())
 
         #SINGLE SEND PRIMARY
-        test_res.append(self.single_send_primary())
+        test_results.append(self.single_send_primary())
 
         #SINGLE SEND BACKUP
-        test_res.append(self.single_send_backup())
+        test_results.append(self.single_send_backup())
 
-        return all(test_res)
+        return all(test_results)
                 
-    def test_02_flood_receives(self):
+    def test_03_flood_receives(self):
         src_accounts = self.account_list[0:self.num_accounts]      
         dest_accounts = [self.account_list[random.randint(0,self.num_accounts-1)]]*self.num_accounts
         return self.send_and_confirm_txn(self.num_accounts, 100, src_accounts, dest_accounts, 8)
@@ -175,6 +175,7 @@ class TestCaseMixin:
         if eval(dest_after['balance']) != eval(dest_before['balance'])+send_amt:
             print("single send primary: dest balance failed")
             return False
+        return True
         
     def single_send_backup(self):
         account_before = self.nodes[0].account_info(self.account_list[1]['account'])
@@ -201,3 +202,4 @@ class TestCaseMixin:
         if eval(dest_after['balance']) != eval(dest_before['balance'])+send_amt:
             print("single send backup: dest balance failed")
             return False
+        return True

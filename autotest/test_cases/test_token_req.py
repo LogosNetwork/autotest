@@ -5,16 +5,16 @@ import json
 import qlmdb3
 
 class TestCaseMixin:
-    def test_10_token_requests(self):
+    def test_10_token_req(self):
         supply = 1234567890123456789
         dist = 12345
         fee = eval(str(60)+'0'*MLGS_DEC)
         logos = 2345678901234567890123456789
         token_fee = 100
 
-        print('======================================================================')
-        print('TOKEN ISSUANCE')
-        print('======================================================================')
+        ##======================================================================
+        ## TOKEN ISSUANCE
+        ##======================================================================
         account_before = self.nodes[0].account_info(self.account_list[1]['account'])
         account_prev = account_before['frontier']
         d_id = designated_delegate(self.account_list[1]['public'],account_prev)
@@ -39,13 +39,13 @@ class TestCaseMixin:
             
         account_check = self.nodes[0].account_info(self.account_list[1]['account'])
         if eval(account_check['balance']) != eval(account_before['balance'])-fee:
-            print("sender logos amount fails check")
+            print("TOKEN ISSUANCE FAILS: sender logos amount fails check")
             return False
         account_prev = created['hash']
         
-        print('======================================================================')
-        print("FUND TOKEN WITH LOGOS")
-        print('======================================================================')
+        ##======================================================================
+        ## FUND TOKEN WITH LOGOS
+        ##======================================================================
         gen_prev = self.nodes[0].account_info()['frontier']
         d_id = designated_delegate(g_pub, gen_prev)
         created = self.nodes[d_id].block_create(
@@ -56,14 +56,14 @@ class TestCaseMixin:
         if not self.wait_for_requests_persistence([created['hash']]):
             sys.stderr.write('Creation stopped at fund')
 
-        print('======================================================================')
-        print("DISTRIBUTE TOKEN")
-        print('======================================================================')
+        ##======================================================================
+        ## DISTRIBUTE TOKEN
+        ##======================================================================
         account_before = self.nodes[0].account_info(self.account_list[1]['account'])
         token_before = self.nodes[0].account_info(token_account)
         token_prev =  token_before['frontier']
         d_id = designated_delegate(self.account_list[1]['public'], token_prev)
-        created = self.nodes[0].block_create_distribute(
+        created = self.nodes[d_id].block_create_distribute(
             private_key=self.account_list[1]['private'],
             previous=token_prev,
             fee=fee,
@@ -79,16 +79,16 @@ class TestCaseMixin:
         token_check = self.nodes[0].account_info(token_account)
         # check token 
         if eval(token_check['token_balance'])!=(supply-dist) or eval(token_check['balance'])!=eval(token_before['balance'])-fee:
-            print("token_account balance fails")
+            print("TOKEN DISTRIBUTE FAILS: token_account balance fails")
             return False
         # check account
         if eval(account_check['tokens'][coin['token_id']]['balance']) != dist:
-            print("account token balance fails")
+            print("TOKEN DISTRIBUTE FAILS: account token balance fails")
             return False
         
-        print('======================================================================')
-        print("TOKEN SEND WITH FLAT FEE")
-        print('======================================================================')
+        ##======================================================================
+        ## TOKEN SEND WITH FLAT FEE
+        ##======================================================================
         account_before = self.nodes[0].account_info(self.account_list[1]['account'])
         token_before = self.nodes[0].account_info(token_account)
         d_id = designated_delegate(self.account_list[1]['public'], account_prev)
@@ -110,32 +110,34 @@ class TestCaseMixin:
         self.nodes[d_id].process(created['request'])
         if not self.wait_for_requests_persistence([created['hash']]):
             sys.stderr.write('Creation stopped at send')
-
+           
         account_check = self.nodes[0].account_info(self.account_list[1]['account'])
         token_check = self.nodes[0].account_info(token_account)
         total_sent = 0
         for i in range(2, 10):
             dest_check = self.nodes[0].account_info(self.account_list[i]['account'])
             #check dest
-            if eval(dest_check['tokens'][coin['token_id']]['balance'])!=i: return False
+            if eval(dest_check['tokens'][coin['token_id']]['balance'])!=i:
+                print("TOKEN SEND FLAT FEE FAILS: destination token balance fails check")
+                return False
             total_sent += i
             
         #check sender
         if eval(account_check['tokens'][coin['token_id']]['balance']) != eval(account_before['tokens'][coin['token_id']]['balance'])-total_sent-token_fee:
-            print("sender token amount fails check")
+            print("TOKEN SEND FLAT FEE FAILS: sender token amount fails check")
             return False
         if eval(account_check['balance']) != eval(account_before['balance'])-fee:
-            print("sender logos amount fails check")
+            print("TOKEN SEND FLAT FEE FAILS: sender logos amount fails check")
             return False
 
         #check token_account
         if eval(token_check['token_fee_balance'])!=eval(token_before['token_fee_balance'])+token_fee:
-            print("token_account token fee balance fails check")
+            print("TOKEN SEND FLAT FEE FAILS: token_account token fee balance fails check")
             return False
         
-        print('======================================================================')
-        print('BURN TOKEN')
-        print('======================================================================')
+        ##======================================================================
+        ## BURN TOKEN
+        ##======================================================================
         burn = 10000
         token_before = self.nodes[0].account_info(token_account)
         token_prev = token_before['frontier']
@@ -154,20 +156,20 @@ class TestCaseMixin:
         token_check = self.nodes[0].account_info(token_account)
 
         if eval(token_check['token_balance'])!=eval(token_before['token_balance'])-burn or eval(token_check['total_supply'])!=eval(token_before['total_supply'])-burn:
-            print("token_account balance/supply fails check")
+            print("TOKEN BURN FAILS: token_account balance/supply fails check")
             return False
         if eval(token_check['balance'])!=eval(token_before['balance'])-fee:
-            print("token_account fee balance fails check")
+            print("TOKEN BURN FAILS: token_account fee balance fails check")
             return False
 
-        print('======================================================================')
-        print('ISSUE ADDITIONAL TOKEN')
-        print('======================================================================')
+        ##======================================================================
+        ## ISSUE ADDITIONAL TOKEN
+        ##======================================================================
         issue_add = 1000000
         token_before = self.nodes[0].account_info(token_account)
         token_prev = token_before['frontier']
         d_id = designated_delegate(self.account_list[1]['public'], token_prev)
-        created = self.nodes[d_id].block_create_additional_issuance(
+        created = self.nodes[d_id].block_create_issue_additional(
             private_key=self.account_list[1]['private'],
             previous=token_prev,
             amount=issue_add,
@@ -181,16 +183,16 @@ class TestCaseMixin:
         token_check = self.nodes[0].account_info(token_account)
 
         if eval(token_check['token_balance'])!=eval(token_before['token_balance'])+issue_add or eval(token_check['total_supply'])!=eval(token_before['total_supply'])+issue_add:
-            print("token_account balance/supply fails check")
+            print("TOKEN ISSUE ADDITIONAL FAILS: token_account balance/supply fails check")
             return False
 
         if eval(token_check['balance'])!=eval(token_before['balance'])-fee:
-            print("token_account fee balance fails check")
+            print("TOKEN ISSUE ADDITIONAL FAILS: token_account fee balance fails check")
             return False
         
-        print('======================================================================')
-        print('WITHDRAW FEE')
-        print('======================================================================')
+        ##======================================================================
+        ## WITHDRAW FEE
+        ##======================================================================
         account_before = self.nodes[0].account_info(self.account_list[1]['account'])
         token_before = self.nodes[0].account_info(token_account)
         token_prev = token_before['frontier']
@@ -211,19 +213,19 @@ class TestCaseMixin:
         token_check = self.nodes[0].account_info(token_account)
 
         if eval(token_check['token_fee_balance'])!=eval(token_before['token_fee_balance'])-token_fee:
-            print("token_account balance/supply fails check")
+            print("TOKEN WITHDRAW FEE FAILS: token_account balance/supply fails check")
             return False
         if eval(token_check['balance'])!=eval(token_before['balance'])-fee:
-            print("token_account fee balance fails check")
+            print("TOKEN WITHDRAW FEE FAILS: token_account fee balance fails check")
             return False
         
         if eval(account_check['tokens'][coin['token_id']]['balance']) != eval(account_before['tokens'][coin['token_id']]['balance'])+token_fee:
-            print("sender token amount fails check")
+            print("TOKEN WITHDRAW FEE FAILS: sender token amount fails check")
             return False
 
-        print('======================================================================')
-        print('WITHDRAW LOGOS')
-        print('======================================================================')
+        ##======================================================================
+        ## WITHDRAW LOGOS
+        ##======================================================================
         withdraw_logos = 123
         account_before = self.nodes[0].account_info(self.account_list[1]['account'])
         token_before = self.nodes[0].account_info(token_account)
@@ -246,16 +248,16 @@ class TestCaseMixin:
         token_check = self.nodes[0].account_info(token_account)
 
         if eval(token_check['balance'])!=eval(token_before['balance'])-withdraw_logos-fee:
-            print("token_account balance/supply fails check")
+            print("TOKEN WITHDRAW LOGOS FAILS: token_account balance/supply fails check")
             return False
 
         if eval(account_check['balance']) != eval(account_before['balance'])+withdraw_logos:
-            print("sender token amount fails check")
+            print("TOKEN WITHDRAW LOGOS FAILS: sender token amount fails check")
             return False
 
-        print('======================================================================')
-        print('REVOKE')
-        print('======================================================================')
+        ##======================================================================
+        ## REVOKE
+        ##======================================================================
         revoke = 9
         account_before = self.nodes[0].account_info(self.account_list[1]['account'])
         revoke_before = self.nodes[9].account_info(self.account_list[9]['account'])
@@ -279,20 +281,20 @@ class TestCaseMixin:
         token_check = self.nodes[0].account_info(token_account)
 
         if eval(account_check['tokens'][coin['token_id']]['balance']) != eval(account_before['tokens'][coin['token_id']]['balance'])+revoke:
-            print("dest amount fails check")
+            print("TOKEN REVOKE FAILS: dest amount fails check")
             return False
 
         if eval(revoke_check['tokens'][coin['token_id']]['balance']) != eval(revoke_before['tokens'][coin['token_id']]['balance'])-revoke:
-            print("src amount fails check")
+            print("TOKEN REVOKE FAILS: src amount fails check")
             return False
 
         if eval(token_check['balance'])!=eval(token_before['balance'])-fee:
-            print("token_account fee balance fails check")
+            print("TOKEN REVOKE FAILS: token_account fee balance fails check")
             return False
         
-        print('======================================================================')
-        print('UPDATE ISSUER INFO')
-        print('======================================================================')
+        ##======================================================================
+        ## UPDATE ISSUER INFO
+        ##======================================================================
         info = "this is the update"
         token_before = self.nodes[0].account_info(token_account)
         token_prev = token_before['frontier']
@@ -311,15 +313,15 @@ class TestCaseMixin:
         token_check = self.nodes[0].account_info(token_account)
 
         if token_check['issuer_info'] != info:
-            print("info fails check")
+            print("TOKEN UPDATE ISSUER INFO FAILS: info fails check")
             return False
         if eval(token_check['balance'])!=eval(token_before['balance'])-fee:
-            print("token_account fee balance fails check")
+            print("TOKEN UPDATE ISSUER INFO FAILS: token_account fee balance fails check")
             return False
 
-        print('======================================================================')
-        print('CHANGE SETTING')
-        print('======================================================================')
+        ##======================================================================
+        ## CHANGE SETTING
+        ##======================================================================
         setting_add = "freeze"
         token_before = self.nodes[0].account_info(token_account)
         token_prev = token_before['frontier']
@@ -342,15 +344,15 @@ class TestCaseMixin:
         before_setting.append(setting_add)
         
         if set(token_check['settings']) != set(before_setting):
-            print("token_account settings fails check")
+            print("TOKEN CHANGE SETTING FAILS: token_account settings fails check")
             return False
         if eval(token_check['balance'])!=eval(token_before['balance'])-fee:
-            print("token_account fee balance fails check")
+            print("TOKEN CHANGE SETTING FAILS: token_account fee balance fails check")
             return False
 
-        print('======================================================================')
-        print('ADD CONTROLLER')
-        print('======================================================================')
+        ##======================================================================
+        ## ADD CONTROLLER
+        ##======================================================================
         controller = {"account":self.account_list[2]['account'], "privileges":['distribute', 'revoke']}
         token_before = self.nodes[0].account_info(token_account)
         token_prev = token_before['frontier']
@@ -371,15 +373,15 @@ class TestCaseMixin:
         token_check = self.nodes[0].account_info(token_account)
 
         if set(token_check['controllers'][1]['privileges']) != set(controller['privileges']):
-            print("token_account controller fails check")
+            print("TOKEN UPDATE CONTROLLER (ADD NEW) FAILS: token_account controller fails check")
             return False
         if eval(token_check['balance'])!=eval(token_before['balance'])-fee:
-            print("token_account fee balance fails check")
+            print("TOKEN UPDATE CONTROLLER (ADD NEW) FAILS: token_account fee balance fails check")
             return False
         
-        print('======================================================================')
-        print('REMOVE CONTROLLER PRIVILEGE')
-        print('======================================================================')
+        ##======================================================================
+        ## REMOVE CONTROLLER PRIVILEGE
+        ##======================================================================
         controller = {"account":self.account_list[2]['account'], "privileges":['revoke']}
         token_before = self.nodes[0].account_info(token_account)
         token_prev = token_before['frontier']
@@ -402,15 +404,15 @@ class TestCaseMixin:
         priv = token_before['controllers'][1]['privileges']
         priv.remove(controller['privileges'][0])
         if set(token_check['controllers'][1]['privileges']) != set(priv):
-            print("token_account controller fails check")
+            print("TOKEN UPDATE CONTROLLER (REMOVE PRIVILEGE) FAILS: token_account controller fails check")
             return False
         if eval(token_check['balance'])!=eval(token_before['balance'])-fee:
-            print("token_account fee balance fails check")
+            print("TOKEN UPDATE CONTROLLER (REMOVE PRIVILEGE) FAILS: token_account fee balance fails check")
             return False
 
-        print('======================================================================')
-        print('CHANGE IMMUTE SETTING')
-        print('======================================================================')
+        ##======================================================================
+        ## IMMUTE SETTING
+        ##======================================================================
         immute_setting = 'freeze'
         immute_able = 'modify_freeze'
         token_before = self.nodes[0].account_info(token_account)
@@ -433,15 +435,15 @@ class TestCaseMixin:
         immute.remove(immute_able)
         
         if set(token_check['settings']) != set(immute):
-            print("token_account settings fails check")
+            print("TOKEN IMMUTE SETTING FAILS: token_account settings fails check")
             return False
         if eval(token_check['balance'])!=eval(token_before['balance'])-fee:
-            print("token_account fee balance fails check")
+            print("TOKEN IMMUTE SETTING FAILS: token_account fee balance fails check")
             return False
 
-        print('======================================================================')
-        print('CHANGE USER STATUS')
-        print('======================================================================')
+        ##======================================================================
+        ## ADJUST USER STATUS
+        ##======================================================================
         status = 'frozen'
         account_before = self.nodes[0].account_info(self.account_list[3]['account'])
         token_before = self.nodes[0].account_info(token_account)
@@ -463,16 +465,16 @@ class TestCaseMixin:
         token_check = self.nodes[0].account_info(token_account)
         
         if account_before['tokens'][coin['token_id']]['frozen'] != 'false' or account_after['tokens'][coin['token_id']]['frozen'] != 'true':
-            print("account status fails check")
+            print("TOKEN ADJUST USER STATUS: account status fails check")
             return False
         
         if eval(token_check['balance'])!=eval(token_before['balance'])-fee:
-            print("token_account fee balance fails check")
+            print("TOKEN ADJUST USER STATUS: token_account fee balance fails check")
             return False
         
-        print('======================================================================')
-        print('ADJUST FEE')
-        print('======================================================================')
+        ##======================================================================
+        ## ADJUST FEE
+        ##======================================================================
         fee_type = 'percentage'
         fee_rate = '20'
         token_before = self.nodes[0].account_info(token_account)
@@ -494,16 +496,17 @@ class TestCaseMixin:
         token_check = self.nodes[0].account_info(token_account)
         
         if token_before['fee_type'] != 'flat' or token_check['fee_type'] != fee_type or token_check['fee_rate'] != fee_rate:
-            print("token_account fee type/rate fails check")
+            print("TOKEN ADJUST FEE FAILS: token_account fee type/rate fails check")
             return False
         if eval(token_check['balance'])!=eval(token_before['balance'])-fee:
-            print("token_account fee balance fails check")
+            print("TOKEN ADJUST FEE FAILS: token_account fee balance fails check")
             return False
 
-        print('======================================================================')
-        print('TOKEN SEND WITH PERCENTAGE FEE')
-        print('======================================================================')
+        ##======================================================================
+        ## TOKEN SEND WITH PERCENTAGE FEE
+        ##======================================================================
         token_fee = 2
+        total_sent = 10
         account_before = self.nodes[0].account_info(self.account_list[1]['account'])
         account_prev = account_before['frontier']
         token_before = self.nodes[0].account_info(token_account)
@@ -514,7 +517,7 @@ class TestCaseMixin:
             token_id=coin['token_id'],
             fee=fee,
             token_fee=token_fee,
-            transactions=[{"destination":self.account_list[10]['account'], "amount":"10"}]
+            transactions=[{"destination":self.account_list[10]['account'], "amount":total_sent}]
         )
         self.nodes[d_id].process(created['request'])
         if not self.wait_for_requests_persistence([created['hash']]):
@@ -522,24 +525,24 @@ class TestCaseMixin:
 
         account_check = self.nodes[0].account_info(self.account_list[1]['account'])
         token_check = self.nodes[0].account_info(token_account)
-        total_sent = 0
-        for i in range(2, 10):
-            dest_check = self.nodes[0].account_info(self.account_list[i]['account'])
-            #check dest
-            if eval(dest_check['tokens'][coin['token_id']]['balance'])!=i: return False
-            total_sent += i
+        
+        dest_check = self.nodes[0].account_info(self.account_list[10]['account'])
+        #check dest
+        if eval(dest_check['tokens'][coin['token_id']]['balance'])!=total_sent:
+            print("TOKEN SEND PERCENTAGE FEE FAILS: send token dest token balance fails")
+            return False
             
         #check sender
         if eval(account_check['tokens'][coin['token_id']]['balance']) != eval(account_before['tokens'][coin['token_id']]['balance'])-total_sent-token_fee:
-            print("sender token amount fails check")
+            print("TOKEN SEND WITH PERCENTAGE FEE FAILS: sender token amount fails check")
             return False
         if eval(account_check['balance']) != eval(account_before['balance'])-fee:
-            print("sender logos amount fails check")
+            print("TOKEN SEND PERCENTAGE FEE FAILS: sender logos amount fails check")
             return False
 
         #check token_account
         if eval(token_check['token_fee_balance'])!=eval(token_before['token_fee_balance'])+token_fee:
-            print("token_account token fee balance fails check")
+            print("TOKEN SEND PERCENTAGE FEE FAILS: token_account token fee balance fails check")
             return False
         
         return True

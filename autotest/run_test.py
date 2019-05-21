@@ -240,12 +240,14 @@ if __name__ == '__main__':
         restart_logos(cluster)
     
     test_case = TestRequests(cluster)
-    #while not test_case.is_cluster_initialized():
-    #    sleep(2)
+    while not isinstance(cluster, int) and not test_case.is_cluster_initialized():
+        sleep(2)
         
     test_case.run()
-    #test_case.test_00_logos_requests()
-    #test_case.test_01_account_creation()
-    #test_case.test_10_token_requests()
-    #test_case.test_11_token_requests_flood()
-    #test_case.test_token_illegal()
+    #print(test_case.test_00_logos_req())
+    #print(test_case.test_01_account_creation())
+    #print(test_case.test_02_logos_req_illegal())
+    #print(test_case.test_03_flood_receives())
+    #print(test_case.test_10_token_req())
+    #print(test_case.test_11_token_req_illegal())
+    #print(test_case.test_12_token_req_flood())

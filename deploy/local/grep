@@ -1,0 +1,3 @@
+#!/bin/bash
+grep -Ei "$1" DB/Consensus*/log/*
+grep -Ei "$1" DB/TXA/Consensus*/log/* 2>/dev/null
