@@ -365,6 +365,15 @@ def start_cluster_instances(cluster_name):
         )
 
 
+def associate_prod_ips(cluster_name):
+    ec2 = boto3.client('ec2')
+    addrs = ec2.describe_addresses(Filters=[{'Name': 'tag:Name', 'Values': ['TestNet']}])
+    addr_allocs = [a['AllocationId'] for a in addrs['Addresses']]
+    ec2_ids = get_cluster_instance_ids_by_state(cluster_name)
+    for alloc, inst in zip(addr_allocs, ec2_ids):
+        ec2.associate_address(AllocationId=alloc, InstanceId=inst)
+
+
 def get_cluster_instance_ids_by_state(cluster_name, state_name='running', ec2_client=None):
     if ec2_client is None:
         ec2_client = boto3.client('ec2', region_name=REGION)
