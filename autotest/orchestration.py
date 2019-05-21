@@ -2,6 +2,8 @@ import sys
 from time import sleep
 
 import boto3
+import os
+import subprocess
 
 from utils import batch
 
