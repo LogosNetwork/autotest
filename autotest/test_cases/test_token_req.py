@@ -8,10 +8,60 @@ class TestCaseMixin:
     def test_10_token_req(self):
         supply = 1234567890123456789
         dist = 12345
-        fee = eval(str(60)+'0'*MLGS_DEC)
+        fee = eval(str(15)+'0'*MLGS_DEC)
         logos = 2345678901234567890123456789
         token_fee = 100
 
+        ##======================================================================
+        ## ENSURE ACCOUNT HAS ENOUGH FUNDS
+        ##======================================================================
+        account_info={}
+        try:
+            account_info = self.nodes[0].account_info(self.account_list[1]['account'])
+        except:
+            account_info['balance'] = "1"
+        if eval(account_info['balance']) < fee*30:
+            gen_info = self.nodes[0].account_info()
+            gen_prev = gen_info['frontier']
+            d_id = designated_delegate(g_pub, gen_prev)
+            created = self.nodes[0].block_create(
+                previous=gen_prev,
+                txns=[{"destination":self.account_list[1]['account'], "amount":fee*30}]
+            )
+            self.nodes[d_id].process(created['request'])
+            if not self.wait_for_requests_persistence([created['hash']]):
+                sys.stderr.write('Stopped at funding account')
+
+        for i in range(2, 11):
+            try:
+                self.nodes[0].account_info(self.account_list[i]['account'])
+            except:
+                d_id = designated_delegate(g_pub, created['hash'])
+                created = self.nodes[0].block_create(
+                    previous=gen_prev,
+                    txns=[{"destination":self.account_list[i]['account'], "amount":fee*2},
+                          {"destination":self.account_list[i+1]['account'], "amount":fee*2},
+                          {"destination":self.account_list[i+2]['account'], "amount":fee*2},
+                          {"destination":self.account_list[i+3]['account'], "amount":fee*2},
+                          {"destination":self.account_list[i+4]['account'], "amount":fee*2},
+                          {"destination":self.account_list[i+5]['account'], "amount":fee*2},
+                          {"destination":self.account_list[i+6]['account'], "amount":fee*2},
+                          {"destination":self.account_list[i+7]['account'], "amount":fee*2},
+                    ]
+                )
+                self.nodes[d_id].process(created['request'])
+                if not self.wait_for_requests_persistence([created['hash']]):
+                    sys.stderr.write('Stopped at funding account')
+                d_id = designated_delegate(g_pub, created['hash'])
+                created = self.nodes[0].block_create(
+                    previous=gen_prev,
+                    txns=[{"destination":self.account_list[10]['account'], "amount":fee*2}]
+                )
+                self.nodes[d_id].process(created['request'])
+                if not self.wait_for_requests_persistence([created['hash']]):
+                    sys.stderr.write('Stopped at funding account')
+                break
+        
         ##======================================================================
         ## TOKEN ISSUANCE
         ##======================================================================
