@@ -418,6 +418,6 @@ def run_db_get(cluster_name, dbname, key, client=None, remote=True):
         print(os.getcwd())
         os.chdir("../../db-tests/")
         print(os.getcwd())
-        subprocess.run(["sudo", "python", "get_from_db.py", "../cloud-benchmark-deployment/deploy/local/DB/Consensus_0/data.ldb", "../cloud-benchmark-deployment/deploy/local/DB/Consensus_0/log" , dbname, key])
+        subprocess.run(["sudo", "python", "get_from_db.py", "../autotest/deploy/local/DB/Consensus_0/data.ldb", "../autotest/deploy/local/DB/Consensus_0/log" , dbname, key])
         os.chdir("../autotest/autotest")
         return
