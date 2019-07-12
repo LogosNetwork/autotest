@@ -334,7 +334,7 @@ def start_cluster_instances(cluster_name):
     while True:
         ids_to_start = get_cluster_instance_ids_by_state(cluster_name, 'stopped', ec2_client)
         if len(ids_to_start) < len(all_ids):
-            print(' ' * 60 + '\r' + 'Waiting for all instances to stop first{}\r'.format('.' * counter))
+            print(' ' * 60 + '\r' + 'Waiting for all instances to stop first{}'.format('.' * counter), end='\r')
             counter = counter % 3 + 1
             sleep(5)
         else:

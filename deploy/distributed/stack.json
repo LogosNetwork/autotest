@@ -336,8 +336,7 @@
           { "IpProtocol": "tcp", "FromPort": "55000", "ToPort": "55000", "CidrIp": "0.0.0.0/0"},
           { "IpProtocol": "tcp", "FromPort": "56000", "ToPort": "56002", "CidrIp": "0.0.0.0/0"},
           { "IpProtocol": "tcp", "FromPort": "22", "ToPort": "22", "CidrIp": { "Ref": "SSHLocation" } },
-          { "IpProtocol": "tcp", "FromPort": "80", "ToPort": "80", "CidrIp": "0.0.0.0/0"},
-          { "IpProtocol": "tcp", "FromPort": "14495", "ToPort": "14495", "CidrIp": "0.0.0.0/0"}
+          { "IpProtocol": "tcp", "FromPort": "80", "ToPort": "80", "CidrIp": "0.0.0.0/0"}
         ]
       }
     },
@@ -350,6 +349,34 @@
         "IpProtocol": "tcp",
         "FromPort": "60000",
         "ToPort": "60002",
+        "SourceSecurityGroupId": {
+          "Ref": "InstanceSecurityGroup"
+        }
+      }
+    },
+    "P2PIngress": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Ref": "InstanceSecurityGroup"
+        },
+        "IpProtocol": "tcp",
+        "FromPort": "14495",
+        "ToPort": "14495",
+        "SourceSecurityGroupId": {
+          "Ref": "InstanceSecurityGroup"
+        }
+      }
+    },
+    "BootstrapIngress": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Ref": "InstanceSecurityGroup"
+        },
+        "IpProtocol": "tcp",
+        "FromPort": "17000",
+        "ToPort": "17000",
         "SourceSecurityGroupId": {
           "Ref": "InstanceSecurityGroup"
         }
