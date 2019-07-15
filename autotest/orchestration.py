@@ -254,7 +254,6 @@ def update_config(cluster_name, config_id='', command_line_options='', restart=F
         callback_str = ''
 
     commands = [
-        # 'systemctl stop logos_core',
         'kill -9 $(pgrep logos_core)',
         'aws s3 cp s3://logos-bench-{}/helpers/gen_config.py {}/gen_config.py'.format(REGION, BENCH_DIR)
         if new_generator else '',
@@ -271,6 +270,35 @@ def update_config(cluster_name, config_id='', command_line_options='', restart=F
             data_path=DATA_PATH
         ),
         'rm -f {}'.format(files_to_rm),
+        ('sleep 20 && ' + gen_start_logos_command(command_line_options)) if restart else ''
+    ]
+    return execute_command_on_cluster(cluster_name, commands, client)
+
+
+def update_ldb(cluster_name, db_id, command_line_options='', restart=False, client=None):
+    """
+
+    Args:
+        cluster_name (:obj:`str`): AWS Cloudformation cluster name
+        db_id (:obj:`str`): identifier of ldb file on S3 bucket.
+        command_line_options (:obj:`str`): additional command line options for starting logos_core
+            (other than --daemon --data_path /home/ubuntu/bench/LogosTest)
+        restart (bool): whether to restart software
+        client: a boto3 ssm client
+
+    Returns:
+        dict: the response from the send_command function
+    """
+    files_to_rm = get_files_to_remove(True)
+
+    commands = [
+        'kill -9 $(pgrep logos_core)',
+        'rm -f {}'.format(files_to_rm),
+        'aws s3 cp s3://logos-bench-{region}/ldbs/{db_id}/data.ldb {data_dir}/ && chmod 644 {data_dir}/data.ldb'.format(
+            region=REGION,
+            db_id=db_id,
+            data_dir=DATA_PATH,
+        ),
         ('sleep 20 && ' + gen_start_logos_command(command_line_options)) if restart else ''
     ]
     return execute_command_on_cluster(cluster_name, commands, client)
