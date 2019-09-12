@@ -1,3 +1,4 @@
+import json
 import os
 import paramiko
 from queue import Queue, Empty
@@ -502,3 +503,10 @@ def batch(iterable, n=1):
     length = len(iterable)
     for idx in range(0, length, n):
         yield iterable[idx:min(idx + n, length)]
+
+
+def load_gov_keys() -> dict:
+    with open(os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                           'data/governance_keys.json'),
+              'r') as f:
+        return json.load(f)

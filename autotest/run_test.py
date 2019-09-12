@@ -1,5 +1,6 @@
 import pickle
 import re
+from typing import List, Dict
 
 from utils import *
 from orchestration import *
@@ -26,7 +27,8 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
             self.remote = False
         else:
             raise RuntimeError('Unsupported cluster arg type')
-        self.ips = (get_remote_cluster_ips if self.remote else get_local_cluster_ips)(cluster_arg)
+        self.ips: Dict[int, Dict[str, str]] = \
+            (get_remote_cluster_ips if self.remote else get_local_cluster_ips)(cluster_arg)
         if disable_transition:
             self.ips = {k: v for k, v in self.ips.items() if k < num_delegates}
         # reverse mapping of ip to global index
@@ -37,12 +39,12 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         if not self.ips:
             raise RuntimeError('Error retrieving IPs for cluster, does cluster exist?')
         self.log_handler = (RemoteLogsHandler if self.remote else LocalLogsHandler)(self.ips)
-        self.nodes = {i: LogosRpc(ip['PublicIpAddress']) for i, ip in self.ips.items()}
-        self.num_nodes = len(self.nodes)
-        self.num_delegates = num_delegates
+        self.nodes: Dict[int, LogosRpc] = {i: LogosRpc(ip['PublicIpAddress']) for i, ip in self.ips.items()}
+        self.num_nodes: int = len(self.nodes)
+        self.num_delegates: int = num_delegates
         self.reset_delegates()
         self.cluster = cluster_arg
-        self.num_accounts = 6
+        self.num_accounts: int = 6
         self.tokens = []
         
         # Preload accounts, create if file not present
@@ -143,27 +145,47 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         _ = self.log_handler.execute_parallel_command(command_list, background=True)
         self.reset_delegates()
 
+    def bulk_sleeve(self, bls_prv_keys: List[str], ecies_prv_keys: List[str],
+                    overwrite: bool = False) -> List[Dict[str, str]]:
+        return [node.call('sleeve_store_keys', bls=bls_prv_keys[i], ecies=ecies_prv_keys[i], overwrite=overwrite)
+                for i, node in self.nodes.items()]
+
+    def bulk_activate(self):
+        self.__bulk_call('delegate_activate')
+
+    def __bulk_call(self, action: str, raise_error: bool = False, **kwargs):
+        def thread_target(idx, **thread_kwargs):
+            try:
+                self.nodes[idx].call(action, **thread_kwargs)
+            except LogosRPCError as err:
+                if raise_error:
+                    raise
+                else:
+                    print('Node {} - {}'.format(idx, err))
+        threads = []
+        for node_idx in range(self.num_nodes):
+            t = threading.Thread(target=thread_target, args=(node_idx,), kwargs=kwargs)
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join()
+
     def reset_delegates(self):
         self.delegates = {i: self.nodes[i] for i in range(self.num_delegates)}  # delegates currently in office
 
-    def is_cluster_initialized(self, from_all=False):
+    def is_cluster_initialized(self, from_all: bool = False):
         if not self.is_cluster_running(None if from_all else 0, verbose=0):
             return False
 
-        pattern = 'Received Post_Commit'
-        if from_all:
-            counts = self.log_handler.grep_count(pattern)
-            print(counts[:self.num_delegates])
-            return all(i == self.num_delegates - 1 for i in counts[:self.num_delegates])
-        else:
-            post_commit_count = self.log_handler.grep_count(pattern, 0)[0]
-            if post_commit_count == self.num_delegates - 1:
-                return True
-            else:
-                print('Received {} out of {} Post_Commit messages'.format(post_commit_count, self.num_delegates - 1))
+        # Check if each delegate's latest request block tip exists
+        for idx in range(self.num_delegates):
+            try:
+                self.nodes[0].request_blocks_latest(delegate_id=idx, count=1)
+            except LogosRPCError:
                 return False
+        return True
 
-    def is_cluster_running(self, node_id=None, verbose=0):
+    def is_cluster_running(self, node_id: int = None, verbose: int = 0):
         pids = self.log_handler.collect_lines('pgrep logos_core', node_id)
         running = True
         for i, pid in enumerate(pids):

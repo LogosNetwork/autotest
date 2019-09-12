@@ -168,7 +168,7 @@ def restart_logos(cluster_name, command_line_options='', clear_db=True, client=N
     files_to_rm = get_files_to_remove(clear_db)
     commands = [
         # 'systemctl stop logos_core',
-        'kill -9 $(pgrep logos_core)'
+        'kill -9 $(pgrep logos_core)',
         'rm -f {}'.format(files_to_rm),
         'sleep 20 && ' + gen_start_logos_command(command_line_options)
     ]
@@ -315,7 +315,8 @@ def get_files_to_remove(clear_db=True):
     """
     files_to_rm = '{}/log/*'.format(DATA_PATH)
     if clear_db:
-        files_to_rm += ' {ldb} {ldb}-lock'.format(ldb='{}/data.ldb'.format(DATA_PATH))
+        for db_type in ['data', 'sleeve']:
+            files_to_rm += ' {ldb} {ldb}-lock'.format(ldb='{}/{}.ldb'.format(DATA_PATH, db_type))
     return files_to_rm
 
 

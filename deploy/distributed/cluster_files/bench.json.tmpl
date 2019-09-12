@@ -63,26 +63,26 @@
         "state_block_generate_canary": "B6DC4D64801BEC7D81DAA086A5733D251E8CBA0E9226FD6173D97C0569EC2998",
         "online_weight_quorum": "50",
         "version": "12",
-	"ConsensusManager": {
-      "delegate_peers": {{PEERS}},
-	    "peer_port": "60000",
-	    "local_address": "{{LOGOS_LOCAL_IP}}",
-      "callback_address" : "127.0.0.1",
-      "callback_port" : "60002",
-      "delegate_id": "{{DELEGATE_ID}}",
-      "run_local": "true",
-      "heartbeat": "false"
-	},
-  "TxAcceptor": {
-      "tx_acceptors":[
-      ],
-      "delegate_ip":"{{TXA_DEL_IP}}",
-      "acceptor_ip":"{{TXA_IP}}",
-      "port":"56000",
-      "json_port": "56001",
-      "bin_port": "56002",
-      "validate_sig": "false"
-  }
+        "identity_control_enabled": "true",
+        "ConsensusManager": {
+	        "peer_port": "60000",
+	        "local_address": "{{LOGOS_LOCAL_IP}}",
+            "callback_address" : "127.0.0.1",
+            "callback_port" : "60002",
+            "enable_elections": "true",
+            "run_local": "true",
+            "heartbeat": "false"
+        },
+        "TxAcceptor": {
+            "tx_acceptors":[
+            ],
+            "delegate_ip":"{{TXA_DEL_IP}}",
+            "acceptor_ip":"{{TXA_IP}}",
+            "port":"56000",
+            "json_port": "56001",
+            "bin_port": "56002",
+            "validate_sig": "true"
+        }
     },
     "opencl_enable": "false",
     "opencl": {
