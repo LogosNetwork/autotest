@@ -140,6 +140,7 @@ while [ $i -lt $inst ]
 do
   echo "$base$postfix" >> ./nodes
   mkdir -p ${db}${i}
+  cp genlogos.json ${db}${i}/genlogos.json
   if [ "$restore" = "0" ]
   then
     dummy=""

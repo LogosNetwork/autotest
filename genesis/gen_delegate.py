@@ -3,53 +3,68 @@ import binascii
 import json
 from pyblake2 import blake2b
 import ed25519_blake2b
-
-
+import os
 
 ## GENERATE TRANSACTIONS
 
 with open('fake_del.json') as f:
     data = json.load(f)
 
+directory = 'accounts'
 a = 0
+account = {}
+if not os.path.exists(directory):
+    os.makedirs(directory)
     
 for y in data['accounts']:
-    fw = open('accounts/genaccount'+"{0:0>2}".format(a)+'.json','w')
+    fw = open(directory+'/genaccount'+"{0:0>2}".format(a)+'.json','w')
     keydata = bytes.fromhex(y['private'])
     sk = ed25519_blake2b.SigningKey(keydata)
-    fw.write('{\n')
-    
+
+    ################################################################################
+    ## GENERATE SEND INFORMATION
+    ################################################################################
     h = blake2b(digest_size=32)
     h.update(qlmdb3.fromaccount(y['account']))                        # destination 
     h.update(binascii.unhexlify(qlmdb3.hexstr(int(y['amount']), 16))) # amount
-    fin_hash = binascii.hexlify(h.digest()).decode('ascii')
 
-    keydata = bytes.fromhex(y['private'])
-    sk = ed25519_blake2b.SigningKey(keydata)
-    hashdata = bytes.fromhex(fin_hash)
+    send_hash = binascii.hexlify(h.digest()).decode('ascii')
+    hashdata = bytes.fromhex(send_hash)
     sig = sk.sign(hashdata)
     hexSig = sig.hex().upper()
-    fw.write('\t\"transaction\": \n\t{\n')
-    fw.write('\t\t\"account\": \"{}\", \"amount\": \"{}\", \"signature\": \"{}\"\n'.format(binascii.hexlify(qlmdb3.fromaccount(y['account'])).decode('ascii'),y['amount'],hexSig))
-    fw.write('\t},\n')
     
+    account['transaction'] = {'account': binascii.hexlify(qlmdb3.fromaccount(y['account'])).decode('ascii').upper(),
+                              'amount': y['amount'],
+                              'signature': hexSig}
+    
+    ################################################################################
     ## GENERATE DELEGATE INFORMATION
+    ################################################################################
+    # hash in same order that delegate is hashed in logos_core
     h = blake2b(digest_size=32)
     h.update(qlmdb3.fromaccount(y['account']))                             # account
-    h.update(binascii.unhexlify(qlmdb3.hexstr(int(y['stake']), 16)))       # stake
-    h.update(binascii.unhexlify(qlmdb3.hexstr(int(y['vote']), 16)))        # vote
     h.update(binascii.unhexlify(y['bls_pub']))                             # bls
-    h.update(binascii.unhexlify(y['ecies']))                               # ecies
+    h.update(binascii.unhexlify(y['ecies_pub']))                           # ecies
+    h.update(binascii.unhexlify(qlmdb3.hexstr(int(y['vote']), 16)))        # rawvote
+    h.update(binascii.unhexlify(qlmdb3.hexstr(int(y['stake']), 16)))       # rawstake
+    h.update(binascii.unhexlify(qlmdb3.hexstr(int(y['vote']), 16)))        # vote
+    h.update(binascii.unhexlify(qlmdb3.hexstr(int(y['stake']), 16)))       # stake
     
     delinfo_hash = binascii.hexlify(h.digest()).decode('ascii')
     hashdata = bytes.fromhex(delinfo_hash)
     sig = sk.sign(hashdata)
     hexSig = sig.hex().upper()
-    fw.write('\t\"delegate_info\": \n\t{\n')
-    fw.write('\t\t\"account\": \"{}\", \"stake\": \"{}\", \"vote\": \"{}\", \"bls_pub\": \"{}\", \"ecies\": \"{}\", \"signature\": \"{}\"\n'.format(binascii.hexlify(qlmdb3.fromaccount(y['account'])).decode('ascii'),y['stake'],y['vote'],y['bls_pub'],y['ecies'],hexSig))
-    fw.write('\t},\n')
     
+    account['delegate_info'] = {'account': binascii.hexlify(qlmdb3.fromaccount(y['account'])).decode('ascii').upper(),
+                                'stake': y['stake'],
+                                'vote': y['vote'],
+                                'bls_pub': y['bls_pub'],
+                                'ecies_pub': y['ecies_pub'],
+                                'signature': hexSig}
+    
+    ################################################################################
     ## GENERATE ANNOUNCE CANDIDACY
+    ################################################################################
     h = blake2b(digest_size=32)
     h.update(binascii.unhexlify(qlmdb3.hexstr(17, 1)))                      # type
     h.update(qlmdb3.fromaccount(y['account']))                              # origin
@@ -60,19 +75,23 @@ for y in data['accounts']:
     h.update(binascii.unhexlify(qlmdb3.hexstr(0, 32)))                      # gov previous
     h.update(binascii.unhexlify(qlmdb3.hexstr(int(y['stake']), 16)))        # stake
     h.update(binascii.unhexlify(y['bls_pub']))                              # bls
-    h.update(binascii.unhexlify(y['ecies']))                                # ecies
+    h.update(binascii.unhexlify(y['ecies_pub']))                            # ecies
     h.update(binascii.unhexlify(qlmdb3.hexstr(100, 1)))                     # levy percentage
+
     announce_hash = binascii.hexlify(h.digest()).decode('ascii')
-    #print(announce_hash)
     hashdata = bytes.fromhex(announce_hash)
     sig = sk.sign(hashdata)
     hexSig = sig.hex().upper()
-    fw.write('\t\"announce\": \n\t{\n')
-    fw.write('\t\t\"origin\": \"{}\", \"stake\": \"{}\", \"bls\": \"{}\", \"ecies\": \"{}\", \"signature\": \"{}\"\n'.format(binascii.hexlify(qlmdb3.fromaccount(y['account'])).decode('ascii'),y['stake'],y['bls_pub'],y['ecies'],hexSig))
-    fw.write('\t},\n')
     
+    account['announce'] = {'origin': binascii.hexlify(qlmdb3.fromaccount(y['account'])).decode('ascii').upper(),
+                           'stake': y['stake'],
+                           'bls_pub': y['bls_pub'],
+                           'ecies_pub': y['ecies_pub'],
+                           'signature': hexSig}
+    
+    ################################################################################
     ## GENERATE START REPRESENTING
-    
+    ################################################################################
     h = blake2b(digest_size=32)
     h.update(binascii.unhexlify(qlmdb3.hexstr(19, 1)))                     # type
     h.update(qlmdb3.fromaccount(y['account']))                             # origin
@@ -83,21 +102,17 @@ for y in data['accounts']:
     h.update(binascii.unhexlify(qlmdb3.hexstr(0, 32)))                     # gov previous
     h.update(binascii.unhexlify(qlmdb3.hexstr(int(y['stake']), 16)))       # stake
     h.update(binascii.unhexlify(qlmdb3.hexstr(100, 1)))                    # levy percentage
-    fin_hash = binascii.hexlify(h.digest()).decode('ascii')
+    startrep_hash = binascii.hexlify(h.digest()).decode('ascii')
 
-    print(binascii.hexlify(qlmdb3.fromaccount(y['account'])))
-    #print(qlmdb3.hexstr(int(y['stake']), 16))
-    #print(qlmdb3.hexstr(100, 1))
-    print(fin_hash)
-    hashdata = bytes.fromhex(fin_hash)
+    hashdata = bytes.fromhex(startrep_hash)
     sig = sk.sign(hashdata)
     hexSig = sig.hex().upper()
-    print(hexSig)
-    fw.write('\t\"start\": \n\t{\n')
-    fw.write('\t\t\"origin\": \"{}\", \"stake\": \"{}\", \"signature\": \"{}\"\n'.format(binascii.hexlify(qlmdb3.fromaccount(y['account'])).decode('ascii'),y['stake'],hexSig))
-    fw.write('\t}\n')
-    fw.write('}\n')
-    fw.close()
+    
+    account['startrep'] = {'origin': binascii.hexlify(qlmdb3.fromaccount(y['account'])).decode('ascii').upper(),
+                           'stake': y['stake'],
+                           'signature': hexSig}
 
+    fw.write(json.dumps(account, indent=4))
     a += 1
     
+fw.close()

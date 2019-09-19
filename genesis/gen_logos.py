@@ -11,7 +11,7 @@ genesis_pub = 'lgs_3e3j5tkog48pnny9dmfzj1r16pg8t1e76dz5tmac6iq689wyjfpiij4txtdo'
 
 fwlogos = open('genlogos.json', 'w')
 acc = []
-start = []
+startrep = []
 announce = []
 micros = []
 epochs = []
@@ -37,8 +37,8 @@ def hash_announce(b2b, dictionary):
     b2b.update(binascii.unhexlify(qlmdb3.hexstr(0, 4)))                          # epoch
     b2b.update(binascii.unhexlify(qlmdb3.hexstr(0, 32)))                         # gov previous
     b2b.update(binascii.unhexlify(qlmdb3.hexstr(int(dictionary['stake']), 16)))  # stake
-    b2b.update(binascii.unhexlify(dictionary['bls']))                            # bls
-    b2b.update(binascii.unhexlify(dictionary['ecies']))                          # ecies
+    b2b.update(binascii.unhexlify(dictionary['bls_pub']))                        # bls
+    b2b.update(binascii.unhexlify(dictionary['ecies_pub']))                      # ecies
     b2b.update(binascii.unhexlify(qlmdb3.hexstr(100, 1)))                        # levy percentage
     return b2b
 
@@ -69,7 +69,7 @@ def hash_micro(b2b, epoch, previous):
 def hash_delegate(b2b, dictionary):
     b2b.update(binascii.unhexlify(dictionary['account']))                        # account
     b2b.update(binascii.unhexlify(dictionary['bls_pub']))                        # bls
-    b2b.update(binascii.unhexlify(dictionary['ecies']))                          # ecies
+    b2b.update(binascii.unhexlify(dictionary['ecies_pub']))                      # ecies
     b2b.update(binascii.unhexlify(qlmdb3.hexstr(int(dictionary['vote']), 16)))   # rawvote
     b2b.update(binascii.unhexlify(qlmdb3.hexstr(int(dictionary['stake']), 16)))  # rawstake
     b2b.update(binascii.unhexlify(qlmdb3.hexstr(int(dictionary['vote']), 16)))   # vote
@@ -139,16 +139,15 @@ for filename in sorted(os.listdir('./accounts')):
     ## GENERATE START REPRESENTING
     #######################################################################################
     # Verify signature to ensure validity
-    y = data['start']
+    y = data['startrep']
     h = blake2b(digest_size=32)
     h = hash_startrep(h, y)
-    start_hash = binascii.hexlify(h.digest()).decode('ascii')
+    startrep_hash = binascii.hexlify(h.digest()).decode('ascii')
     
-    #print(start_hash)
     vkey = ed25519_blake2b.VerifyingKey(bytes.fromhex(y['origin']))
     try:
-        vkey.verify(bytes.fromhex(y['signature']), bytes.fromhex(start_hash))
-        start.append(y)
+        vkey.verify(bytes.fromhex(y['signature']), bytes.fromhex(startrep_hash))
+        startrep.append(y)
     except:
         print("FAIL START REPRESENTING: invalid signature by account {}, retry".format(y['origin']))
         sys.exit()
@@ -177,17 +176,12 @@ for filename in sorted(os.listdir('./accounts')):
     if (len(delegates) <=31):
         y = data['delegate_info']
         h = blake2b(digest_size=32)
-        h.update(binascii.unhexlify(y['account']))                             # account
-        h.update(binascii.unhexlify(qlmdb3.hexstr(int(y['stake']), 16)))       # stake
-        h.update(binascii.unhexlify(qlmdb3.hexstr(int(y['vote']), 16)))        # vote
-        h.update(binascii.unhexlify(y['bls_pub']))                             # bls
-        h.update(binascii.unhexlify(y['ecies']))                               # ecies
+        h = hash_delegate(h, y)
         delinfo_hash = binascii.hexlify(h.digest()).decode('ascii')
         
         vkey = ed25519_blake2b.VerifyingKey(bytes.fromhex(y['account']))
         try:
             vkey.verify(bytes.fromhex(y['signature']), bytes.fromhex(delinfo_hash))
-            #print(y)
             delegates.append(y)
         except:
             print("FAIL DELEGATE INFO: invalid signature by account {}, retry".format(y['account']))
@@ -229,7 +223,7 @@ for i in range(3):
 final = {'accounts':acc,
          'micros':micros,
          'epochs':epochs,
-         'start':start,
+         'start':startrep,
          'announce':announce}
 
 ## Hash for entire genlogos file
@@ -244,7 +238,7 @@ for entry in micros:
 for entry in epochs:
     h = hash_epoch(h, entry['epoch_number'], entry['previous'], entry['microtip'], entry['delegates'])
     
-for entry in start:
+for entry in startrep:
     h = hash_startrep(h, entry)
 
 for entry in announce:
@@ -259,3 +253,4 @@ hexSig = sig.hex().upper()
 
 final['signature'] = hexSig
 fwlogos.write(json.dumps(final, indent=4))
+fwlogos.close()
