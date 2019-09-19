@@ -170,6 +170,16 @@ class TestRequests(*[getattr(test_cases, n).TestCaseMixin for n in test_cases.__
         for t in threads:
             t.join()
 
+    def check_activation_status(self, check):
+        for i in range(self.num_delegates):
+            try:
+                status = self.delegates[i].call('activation_status')
+            except LogosRPCError:
+                return False
+            if status[check] == 'false':
+                return False
+        return True
+            
     def reset_delegates(self):
         self.delegates = {i: self.nodes[i] for i in range(self.num_delegates)}  # delegates currently in office
 
@@ -260,11 +270,24 @@ if __name__ == '__main__':
 
     if cluster is not 'InternalTest' and not isinstance(cluster, int):
         restart_logos(cluster)
-    
-    test_case = TestRequests(cluster)
-    while not isinstance(cluster, int) and not test_case.is_cluster_initialized():
-        sleep(2)
         
+    test_case = TestRequests(cluster)
+    load = load_gov_keys()
+    print("Loaded Keys")
+
+    test_case.bulk_sleeve(load['BLS'], load['ECIES'])
+    while not test_case.check_activation_status('sleeved'):
+        sleep(2)
+    print("Sleeved")
+    
+    test_case.bulk_activate()
+    while not test_case.check_activation_status('activated'):
+        sleep(2)
+    print("Activated")
+    
+    while not test_case.is_cluster_initialized():
+        sleep(2)
+
     test_case.run()
     #print(test_case.test_00_logos_req())
     #print(test_case.test_01_account_creation())

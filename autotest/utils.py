@@ -8,6 +8,7 @@ import requests
 import sys
 import threading
 from time import sleep, time
+import subprocess
 
 RPC_PORT = 55000
 TXA_JSON_PORT = 56001
@@ -433,7 +434,7 @@ class RemoteLogsHandler:
 
 class LocalLogsHandler:
 
-    LOG_DIR = '../../cloud-benchmark-deployment/deploy/local/DB/'
+    LOG_DIR = '../deploy/local/DB/'
 
     def __init__(self, ips):
         self.ips = ips
@@ -443,7 +444,14 @@ class LocalLogsHandler:
         pass
 
     def collect_lines(self, command, node_id=None):
-        pass
+        command = command.split(' ')
+        all_lines = subprocess.check_output([command[0], command[1]]).decode('utf-8').split('\n')
+        if node_id is None:
+            pass
+        else:
+            all_lines = all_lines[node_id]
+            
+        return all_lines
 
     def grep_lines(self, pattern, node_id=None):
         log = max(os.listdir(LocalLogsHandler.LOG_DIR+'Consensus_'+str(node_id)+'/log/'))  
