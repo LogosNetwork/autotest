@@ -10,7 +10,7 @@ In addition, it is best practice to use `virtualenvwrapper` (see [Basic Installa
 If everything is correctly set up, running `python -V` should output `Python 3.x.y` where `x >= 5`. Install required python packages by running `pip install -r requirements.txt` (in the root `autotest` directory).
 
 ## How to run
-#### Deploy cluster:
+#### Deploy distributed cluster (need to sleeve/activate):
 i. goto `autotest/deploy/distributed` and upload binary
 ```
 $ ./upload_s3.sh -l <path_to_build_binary>
@@ -19,9 +19,14 @@ ii. launch cluster
 ```
 $ ./deploy_cluster.sh <cluster_name> -n <num_nodes> -e t2.micro
 ```
+#### Deploy local cluster (need to sleeve/activate):
+i. goto `autotest/deploy/local` and launch cluster
+```
+$ ./launch.sh
+```
 
-#### Run tests:
-i. go to `autotest/autotest`
+#### Sleeve/activate identities of nodes and run tests:
+i. go to `autotest/autotest` (if local cluster, put number of nodes as cluster_name)
 ```
 (autotest) $ python run_test.py <cluster_name>
 ```
