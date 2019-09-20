@@ -5,19 +5,16 @@ from pyblake2 import blake2b
 import ed25519_blake2b
 import os
 
-## GENERATE TRANSACTIONS
-
-with open('fake_del.json') as f:
+with open('init_del.json') as f:
     data = json.load(f)
 
 directory = 'accounts'
-a = 0
 account = {}
 if not os.path.exists(directory):
     os.makedirs(directory)
     
 for y in data['accounts']:
-    fw = open(directory+'/genaccount'+"{0:0>2}".format(a)+'.json','w')
+    fw = open(directory+'/'+y['info']+'.json','w')
     keydata = bytes.fromhex(y['private'])
     sk = ed25519_blake2b.SigningKey(keydata)
 
@@ -33,9 +30,9 @@ for y in data['accounts']:
     sig = sk.sign(hashdata)
     hexSig = sig.hex().upper()
     
-    account['transaction'] = {'account': binascii.hexlify(qlmdb3.fromaccount(y['account'])).decode('ascii').upper(),
-                              'amount': y['amount'],
-                              'signature': hexSig}
+    account['funding_info'] = {'account': binascii.hexlify(qlmdb3.fromaccount(y['account'])).decode('ascii').upper(),
+                               'amount': y['amount'],
+                               'signature': hexSig}
     
     ################################################################################
     ## GENERATE DELEGATE INFORMATION
@@ -113,6 +110,5 @@ for y in data['accounts']:
                            'signature': hexSig}
 
     fw.write(json.dumps(account, indent=4))
-    a += 1
     
 fw.close()

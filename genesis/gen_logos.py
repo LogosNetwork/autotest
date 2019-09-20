@@ -91,7 +91,10 @@ def hash_epoch(b2b, epoch, previous, microtip, delegates):
         b2b = hash_delegate(b2b, delegate)                                       # delegates
     b2b.update(binascii.unhexlify(qlmdb3.hexstr(0, 8)))                          # total rbs
     return b2b
-    
+
+with open('master_list.json') as fmaster:
+        master = json.load(fmaster)
+
 delegates = []
 sequence = 1
 previous = "2A610E54BD32E19E9955624622D7D48316F02153D6F2F9A4CFDEF5E79686E138"
@@ -99,11 +102,21 @@ for filename in sorted(os.listdir('./accounts')):
     with open('./accounts/'+filename) as f:
         data = json.load(f)
 
+    user = filename.split('.')[0]
+    #######################################################################################
+    ## CHECK AGAINST MASTER LIST
+    #######################################################################################
+    assert master[user]['amount'] == data['funding_info']['amount'], 'FAIL funding info mismatch'
+    assert master[user]['vote'] == data['delegate_info']['vote'], 'FAIL delegate_info vote mismatch'
+    assert master[user]['stake'] == data['delegate_info']['stake'], 'FAIL delegate_info stake mismatch'
+    assert master[user]['stake'] == data['startrep']['stake'], 'FAIL startrep stake mismatch'
+    assert master[user]['stake'] == data['announce']['stake'], 'FAIL announce stake mismatch'
+    
     #######################################################################################
     ## GENERATE TRANSACTIONS
     #######################################################################################
     # Verify signature to ensure validity
-    y = data['transaction']
+    y = data['funding_info']
     h = blake2b(digest_size=32)
     h.update(binascii.unhexlify(y['account']))
     h.update(binascii.unhexlify(qlmdb3.hexstr(int(y['amount']), 16)))
@@ -254,3 +267,4 @@ hexSig = sig.hex().upper()
 final['signature'] = hexSig
 fwlogos.write(json.dumps(final, indent=4))
 fwlogos.close()
+fmaster.close()
